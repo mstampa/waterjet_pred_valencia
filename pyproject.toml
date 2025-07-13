@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "waterjet"
+version = "0.1.0"
+description = "Fire stream model derived from https://doi.org/10.1007/s10694-021-01175-1."
+authors = [
+    { name="Merlin Stampa", email="merlin.stampa@fh-dortmund.de" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "bokeh",
+    "numpy",
+    "scipy",
+    "sympy",
+]
+
+# uncomment below later for CLI
+#[project.scripts]
+#run-simulation = "waterjet.prediction.valencia.run_simulation:main"
+
