@@ -1,11 +1,15 @@
 # Fire stream trajectory model — Valencia et al.
 
-*NOTE:* Work in progress and currently not functional!
+* [Prerequisites](#prerequisites)
+* [Usage](#usage)
+* [To-Dos](#to-dos)
+
+**NOTE:** Work in progress and currently not functional!
 There seem to be errors in the ODE system. Example plots were generated with some of the computations bypassed.
 
 This is a Python module for simulating the trajectories of "fire streams", i.e.,
 large water jets shot from fire monitors. The backbone is a 1D Eulerian analytical
-model reproduced from this publication:
+model reproduced from this publication, with the author's kind support:
 
 ```bibtex
 @article{valencia_model_22,
@@ -26,29 +30,35 @@ air phase, and spray phase. It includes air entrainment, jet break-up spray gene
 and multi-dispersion (i.e., droplets of multiple sizes).
 Trajectory and spray behavior are modeled over the streamwise axis "s".
 
+The simulation stops if:
+* the limit for s (simulation span) is reached
+* y <= 0 (the stream hits the ground)
+* assert statements catch a physical impossibility (e.g., negative diameter)
+
+Example plots produced with default parameters:
+
 ![Example plots](doc/example_plots.png)
 
 ## Prerequisites
 
-Key dependencies of this package are:
-* SciPy for solving the ODE
-* bokeh for plotting
+Key dependencies of this package that need to be installed on your system / in your venv:
 
-To get the equations from the paper into the form expected by SciPy's `solve_ivp()` function, the `rearrange.py` script used SymPy.
+* [SciPy](https://www.scipy.org) for solving the ODE
+* [bokeh](https://www.bokeh.org) for plotting
+
+To get the equations from the paper into the form expected by SciPy's `solve_ivp()` function, the `rearrange.py` helpers script uses [SymPy](https://www.sympy.org).
 
 ## Usage
 
 User has to supply:
 - Injection angle above the horizon (between 0 and 90°)
 - Injection velocity [m/s]
-- simulation span (from 0 to an upper bound of the trajectory's length along s)
+- simulation span (maximum value for "s", use an upper limit of the trajectory's length)
 
 The core library is designed to be easily importable into other projects.
-For testing purposes, a simple CLI is provided.
+For testing purposes, a simple **CLI** is provided. Example run:
 
-Example run:
-
-``` 
+```bash
 cd waterjet_pred_valencia
 ./run_simulation.py -a 24 -s 30.8 -n 0.0254 -l 100
 ``` 
@@ -62,5 +72,5 @@ edit `model/parameters.py`.
 
 * Fix ODE system
 * Compare results to original research article
-* Proper Python packaging
-* Use as surrogate model in Smith Predictor control
+* Proper packaging
+* Include as module in other projects

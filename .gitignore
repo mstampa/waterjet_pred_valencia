@@ -1,1 +1,12 @@
+# Gitignore
+
+# byte-compiled / optimized
 __pycache__/
+
+# distribution
+build/
+dist/
+wheels/
+
+# general
+**.*~
