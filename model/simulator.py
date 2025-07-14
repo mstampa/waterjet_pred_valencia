@@ -47,7 +47,7 @@ def simulate(
 
     # ensure parameter correctness
     assert injection_speed > 0.0, "Injection speed must be positive"
-    assert 0 <= injection_angle_deg <= 90, "Injection angle must be in range (0, 90)°"
+    assert 0 <= injection_angle_deg <= 90, "Injection angle must be in (0, 90)°"
     assert nozzle_diameter > 0.0, "Nozzle diameter must be greater than 0"
     assert isinstance(s_span, tuple), "s_span must be a tuple"
     assert len(s_span) == 2, "s_span must be in the form (start, end)"
@@ -129,11 +129,12 @@ def ode_right_hand_side(
 
     assert len(y) == len(idx), "idx must match state vector y"
     dyds = np.zeros_like(y)
+    tol = 1e-6  # tolerance for rounding errors
 
     if not np.all(np.isfinite(y)):
         print("ERROR: One or more values NaN!")
-        for key, idx in idx.items():
-            val = y[idx]
+        for key, i in idx.items():
+            val = y[i]
             if not np.isfinite(val):
                 print(f"{key} = {val}")
         pdb.set_trace()
@@ -169,7 +170,7 @@ def ode_right_hand_side(
     # spray phase diameter = sqrt of (stream phase area - core area - air area)
     # rounding errors can lead to Df² - Dc² - Da² becoming negative, clamp to 1e-6!
     # TODO: Check, seemingly never stated explicitly
-    Ds = np.sqrt(max(Df**2 - Dc**2 - Da**2, 1e-6))
+    Ds = np.sqrt(max(Df**2 - Dc**2 - Da**2, tol))
 
     # --- DEBUG PRINTOUTS --- #
     print(
@@ -187,54 +188,56 @@ def ode_right_hand_side(
     # --- PHYSICAL FEASIBILITY CHECKS --- #
     # helps with debugging
 
-    U0 = params["injection_speed"]
     D0 = params["nozzle_diameter"]
+    U0 = params["injection_speed"]
+    U_max = 2 * U0
     pi_2 = np.pi / 2.0
     pi_4 = np.pi / 4.0
-    # input mass flow from the nozzle [kg / ms]
-    m_in = pi_4 * rho_w * (D0**2) * U0
-    max_diameter = 50.0
+    D_max = 50.0  # maximum diameter
+    ND_max = 1e10  # maximum drop formation (see Fig. 8) [drops/s]
+    m_in = pi_4 * rho_w * (D0**2) * U0  # input mass flow from the nozzle [kg/ms]
+    m_max_caf = 160  # maximum mass flux from core, air, stream phase (Fig. 6a) [kg/ms]
+    m_max_s = 1600.0  # TODO: maximum mass flux from spray phase (Fig. 6b) [kg/ms]
 
     # Speeds [m/s]
-    assert 0.0 <= Uc <= 2 * U0, f"core speed {Uc=} must be in range (0.0, {2*U0})"
-    assert 0.0 <= Ua <= 2 * U0, f"air phase speed {Ua=} must be in range (0.0, {2*U0})"
-    assert 0.0 <= Uf <= 2 * U0, f"stream speed {Uf=} must be in range (0.0, {2*U0})"
+    assert -tol <= Uc <= U_max, f"{Uc=} m/s must be in (0.0, {U_max})"
+    assert -tol <= Ua <= U_max, f"{Ua=} m/s must be in (0.0, {U_max})"
+    assert -tol <= Uf <= U_max, f"{Uf=} m/s must be in (0.0, {U_max})"
 
     # Diameters [m]
-    assert 0.0 <= Dc <= max_diameter, f"{Dc=} must be in range (0.0, {max_diameter})"
-    assert 0.0 <= Da <= max_diameter, f"{Da=} must be in range (0.0, {max_diameter})"
-    assert 0.0 <= Ds <= max_diameter, f"{Ds=} must be in range (0.0, {max_diameter})"
-    assert 0.0 <= Df <= max_diameter, f"{Df=} must be in range (0.0, {max_diameter})"
+    assert -tol <= Dc <= D_max, f"{Dc=} m must be in (0.0, {D_max})"
+    assert -tol <= Da <= D_max, f"{Da=} m must be in (0.0, {D_max})"
+    assert -tol <= Ds <= D_max, f"{Ds=} m must be in (0.0, {D_max})"
+    assert -tol <= Df <= D_max, f"{Df=} m must be in (0.0, {D_max})"
 
     # Angles [rad]
     # TODO: Clarify angle reference (horizontal or vertical)
-    # If vertical, the range goes from 0 (vertical up) to 180° (vertical down)
-    angle_range = (0, np.pi)
+    # If vertical, the range goes from 0° (vertical up) to 180° (vertical down)
+    # Otherwise, from 90° (up) to -90° (down).
+    angle_range = (-tol, np.pi)
     assert (
         angle_range[0] <= theta_a <= angle_range[1]
-    ), f"theta_a={np.rad2deg(theta_a)}° must be in range {np.rad2deg(angle_range)}°"
+    ), f"theta_a={np.rad2deg(theta_a)}° must be in {np.rad2deg(angle_range)}°"
     assert (
         angle_range[0] <= theta_f <= angle_range[1]
-    ), f"theta_f={np.rad2deg(theta_f)=}° must be in range {np.rad2deg(angle_range)}°"
+    ), f"theta_f={np.rad2deg(theta_f)=}° must be in {np.rad2deg(angle_range)}°"
     for i in range(num_drop_classes):
         assert (
             angle_range[0] <= theta_s[i] <= angle_range[1]
-        ), f"theta_s[{i}]={np.rad2deg(theta_s[i])}° must be in range {np.rad2deg(angle_range)}°"
+        ), f"theta_s[{i}]={np.rad2deg(theta_s[i])}° must be in {np.rad2deg(angle_range)}°"
 
     # Spray generation [drops/s]
     for i in range(num_drop_classes):
-        assert 0.0 <= ND[i] <= 1e12, f"ND{i}={ND[i]:.2g} must be in range (0, 1e12)"
+        assert (
+            -tol <= ND[i] <= ND_max
+        ), f"ND{i}={ND[i]:.2g} must be in (0, {ND_max}) drops/s"
 
     # Density [kg/m³]
     assert (
-        rho_a - 1e-6 <= rho_f <= rho_w + 1e-6
-    ), f"Stream density rho_f={rho_f:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
-
-    # TODO: Ask author for more checks, e.g. magnitude of mass and momentum transfers.
+        rho_a - tol <= rho_f <= rho_w + tol
+    ), f"Stream density {rho_f=:.3f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
 
     # --- PRECOMPUTE SINES, COSINES, VECTORS --- #
-    # TODO: Ask about angle usage, this seems to be the main difference between the
-    # paper and Mathematica notebook.
 
     sin_f, cos_f = np.sin(theta_f), np.cos(theta_f)
     sin_c, cos_c = np.sin(theta_c), np.cos(theta_c)
@@ -258,11 +261,11 @@ def ode_right_hand_side(
     ## streamwise unit vector of air phase
     # e_a = np.array([cos_a, sin_a])
 
-    # NOTE: These are reversed since theta_c,theta_a are relative to vertical
     # streamwise unit vector of core phase
+    # NOTE: I've reversed these for now, assuming theta_c, theta_a are defined relative to horizon.
     e_c = np.array([sin_c, cos_c])
     # radial unit vector of core phase
-    n_c = np.array([sin_c, -cos_c])  # TODO: Check this
+    n_c = np.array([sin_c, -cos_c])  # TODO: Check this in particular
     # streamwise unit vector of air phase
     e_a = np.array([sin_a, cos_a])
     # relative velocity vector core -> air
@@ -272,21 +275,25 @@ def ode_right_hand_side(
 
     # Eq. 15 mass flow surroundings -> jet (air entrainment)
     m_sur2f = alpha * np.pi * rho_a * Ua * Df
-    assert m_sur2f >= -1e-6, f"{m_sur2f=} must be >= 0.0 (air is entrained)"
+    assert -tol <= m_sur2f <= m_max_s, f"{m_sur2f=} must be in (0,{m_max_s}) kg/ms"
 
     # Eq. 16 mass flow air -> surroundings
     # NOTE: Mathematica notebook seems to actually compute -sin_fa but compensates with abs()
     m_a2sur = abs(np.pi * rho_a * Df * Ua * sin_fa)
+    assert -tol <= m_a2sur <= m_max_caf, f"{m_a2sur=} must be in (0, {m_max_caf})"
 
     # Eq. 18 momentum exchange air -> surroundings
     # NOTE: cos_fa and sin_fa can become negative, so let's use abs again to be safe.
     f_a2sur = m_a2sur * Ua * abs(cos_fa)
+    assert -tol <= f_a2sur, f"{f_a2sur=} must be positive"
     f_ra2sur = m_a2sur * Ua * abs(sin_fa)
+    assert -tol <= f_ra2sur, f"{f_ra2sur=} must be positive"
 
     # Eq. 20 drag momentum
+    # NOTE: enforced to be positive
     f_c2a_common = pi_2 * F * Dc * np.linalg.norm(U_ca)
-    f_c2a = f_c2a_common * np.dot(U_ca, e_c)
-    f_rc2a = sin_a * f_c2a_common * np.dot(U_ca, n_c)
+    f_c2a = max(tol, f_c2a_common * np.dot(U_ca, e_c))
+    f_rc2a = max(tol, sin_a * f_c2a_common * np.dot(U_ca, n_c))
 
     # Eq. 22 liquid surface break-up efficiency factor
     Delta = Df  # radial integral scale of the jet, assumed to be core diameter
@@ -321,15 +328,15 @@ def ode_right_hand_side(
                 * Df
             )
             if has_breakup_happened
-            else 1e-6
+            else tol
         )
-        assert m_s2sur[i] >= -1e-6, f"{m_s2sur[i]=} must be positive"
+        assert m_s2sur[i] >= -tol, f"{m_s2sur[i]=} must be positive"
 
         # upper bound: total mass of this spray phase
         m_s = ND[i] * rho_w * (np.pi / 6.0) * (d_drop[i] ** 3)
         assert (
-            m_s2sur[i] <= m_s + 1e-3
-        ), f"{m_s2sur[i]=} must be smaller than spray[{i}] total mass {m_s=}"
+            -tol <= m_s2sur[i] <= m_s + tol
+        ), f"{m_s2sur[i]=} kg/ms must be positive and smaller than spray[{i}] total mass {m_s=}"
 
         # Eq. 19 momentum exchange spray -> surroundings
         # NOTE: Again using abs to be safe
@@ -341,11 +348,11 @@ def ode_right_hand_side(
 
         # Eq. 21 radial mass flow core -> spray
         m_c2s[i] = epsilon * u_rc2s[i] * np.pi * rho_w * Dc
-        assert m_c2s[i] >= -1e-6, f"{m_c2s[i]=} must be positive"
+        assert m_c2s[i] >= -tol, f"{m_c2s[i]=} must be positive"
 
         # Eq. 24 momentum transfer core -> spray
         f_c2s[i] = m_c2s[i] * Uc * cos_cs[i]
-        assert f_c2s[i] >= -1e-6, f"{f_c2s[i]=} must be positive"
+        assert f_c2s[i] >= -tol, f"{f_c2s[i]=} must be positive"
 
         # Eq. 25 drag force between spray and air
         Re_d = get_reynolds_number(Us[i], d_drop[i])
@@ -359,12 +366,14 @@ def ode_right_hand_side(
             * np.linalg.norm(U_sa)
         )
         f_s2a[i] = f_s2a_common * abs(np.dot(U_sa, e_s))
+        assert f_s2a[i] >= -tol, f"{f_s2a[i]=} must be positive"
         f_rs2a[i] = sin_s[i] * f_s2a_common * abs(np.dot(U_sa, n_s))
+        assert f_rs2a[i] >= -tol, f"{f_rs2a[i]=} must be positive"
 
     m_c2s_total = np.sum(m_c2s)  # eq 21
     assert (
-        m_c2s_total <= m_in
-    ), f"Mass transfer core->spray {m_c2s_total} must be <= intake {m_in}"
+        -tol <= m_c2s_total <= m_in
+    ), f"{m_c2s_total=} kg/ms must be positive and smaller than intake ({m_in})"
     m_s2sur_total = np.sum(m_s2sur)  # eq 17
     f_s2a_total = np.sum(f_s2a)  # eq 25 top
     f_rs2a_total = np.sum(f_s2a)  # eq 25 bottom
@@ -372,7 +381,7 @@ def ode_right_hand_side(
     f_rs2sur_total = np.sum(f_rs2sur)  # eq 19 bottom
 
     # --- GOVERNING EQUATIONS --- #
-    # rearranged using SymPy and helper script
+    # obtained from the originals with helper script rearrange.py
 
     # core phase only exists until s_brk
     if has_breakup_happened:
@@ -385,13 +394,13 @@ def ode_right_hand_side(
         dyds[idx["Uc"]] = -(np.pi * Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
             np.pi * Dc**2 * Uc * rho_w
         )
-        assert dyds[idx["Uc"]] <= 1e-6, f"{Uc=} can't accelerate!"
 
         dyds[idx["Dc"]] = (
             np.pi * Dc**2 * g * rho_w * cos_c - 4 * Uc * m_c2s_total + 4 * f_c2a
         ) / (2 * np.pi * Dc * Uc**2 * rho_w)
-        # assert dyds[idx["Dc"]] <= 1e-6, f"{Dc=} can't increase!"
+
     else:
+
         print("--- BREAKUP HAPPENED ---")
         params["has_breakup_happened"] = True
 
@@ -482,19 +491,12 @@ def ode_right_hand_side(
         )
         / (np.pi * Df**2 * Uf * rho_a * rho_w)
     )
-    assert (
-        dyds[idx["rho_f"]] <= 1e-3
-    ), f"{dyds[idx["rho_f"]]=} Stream can't gain density!"
 
     # Eq. 13 & 14 Cartesian coordinates of the trajectory
     # TODO: Clarify angles. Should theta_f be relative to horizon or vertical?
     # In the latter case, cos and sin must probably be swapped.
     dyds[idx["x"]] = sin_f  # cos_f
-    assert dyds[idx["x"]] >= 0.0, "Trajectory can't move backwards"
-
     dyds[idx["y"]] = cos_f  # sin_f
-    if s < s_brk:
-        assert dyds[idx["y"]] >= 0.0, "Trajectory can't fall before core break-up"
 
     # --- TEMPORARY WORKAROUND FOR BUGGY ODE --- #
     # By outcommenting these lines, set derivatives to a fixed value.
@@ -502,19 +504,37 @@ def ode_right_hand_side(
 
     # dyds[idx["Uc"]] = 0.0
     # dyds[idx["Dc"]] = 0.0
-    # dyds[idx["Ua"]] = -0.01
+    dyds[idx["Ua"]] = -0.01
     # dyds[idx["Da"]] = 0.01
-    # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
+    dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
     for i in range(num_drop_classes):
         # dyds[idx[f"ND_{i}"]] = 0.0
-        # dyds[idx[f"Us_{i}"]] = 0.0
-        # dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
+        dyds[idx[f"Us_{i}"]] = -0.01
+        dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
         ...
 
     # dyds[idx["Uf"]] = 0.0
     # dyds[idx["Df"]] = 0.0
     # dyds[idx["theta_f"]] = -0.01
-    # dyds[idx["rho_f"]] = -rho_f * 0.05
+    dyds[idx["rho_f"]] = -rho_f * 0.05
+
+    # --- MORE PLAUSIBILITY CHECKS --- #
+    assert dyds[idx["Uc"]] <= tol, "Uc can't accelerate!"
+    assert dyds[idx["Dc"]] >= -tol, "Dc can't decrease!"
+    assert dyds[idx["Ua"]] <= tol, "Ua can't accelerate!"
+    assert dyds[idx["Da"]] >= -tol, "Da can't decrease!"
+    assert dyds[idx["theta_a"]] >= -tol, "Air phase can't bend upwards!"
+    assert dyds[idx["Uf"]] <= tol, "Uf can't accelerate!"
+    assert dyds[idx["Df"]] >= -tol, "Df can't decrease!"
+    assert dyds[idx["theta_f"]] >= -tol, "Stream can't bend upwards!"
+    assert dyds[idx["rho_f"]] <= tol, "Stream can't gain density!"
+    for i in range(num_drop_classes):
+        assert dyds[idx[f"Us_{i}"]] <= tol, f"Us_{i} can't accelerate!"
+        assert dyds[idx[f"theta_s_{i}"]] >= -tol, f"Spray[{i}] can't bend upwards!"
+
+    assert dyds[idx["x"]] >= 0.0, "Trajectory can't move backwards"
+    if s < s_brk:
+        assert dyds[idx["y"]] >= 0.0, "Trajectory can't fall before core break-up"
 
     # On to the next simulation step!
     return dyds

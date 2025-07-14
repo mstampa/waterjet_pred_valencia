@@ -29,7 +29,7 @@ def main(args: Namespace) -> None:
     )
     print(f"\nSimulation finished after {time() - start_time:.4f}s.")
 
-    plot_solution(sol, idx, args.plot_path)
+    plot_solution(sol, idx, args.plotpath)
 
     print(f"All done!")
     return
