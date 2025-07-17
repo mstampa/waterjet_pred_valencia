@@ -20,15 +20,14 @@ import numpy.typing as npt
 from scipy.integrate import solve_ivp
 from scipy.integrate._ivp.ivp import OdeResult
 
-import pdb  # errors automatically drop user into pdb for debugging
-
 
 def simulate(
     injection_speed: float,
     injection_angle_deg: float,
     nozzle_diameter: float,
-    s_span=(0, 100),
-    max_step=1.0,
+    s_span: tuple = (0, 100),
+    max_step: float = 1.0,
+    debug: bool = False,
 ) -> tuple[OdeResult, dict[str, int]]:
     """
     Run the fire stream simulation for given injection parameters.
@@ -39,6 +38,7 @@ def simulate(
     - nozzle_diameter: D_0 [m]
     - s_span: (start, end) in streamwise domain s [m]
     - max_step: Max integration step size [m]
+    - debug: enable debug mode (with console printouts and auto-activation of PDB)
 
     Returns:
     - sol: ODE solution object
@@ -74,7 +74,7 @@ def simulate(
         # flag used inside function to trigger droplet generation at end of core phase
         "has_breakup_happened": False,
     }
-    print(f"Breakup distance: {params["s_brk"]:.2f} m")
+    assert params["s_brk"] > 0.0, "f{params['s_brk']} must be positive"
 
     # stop simulation when trajectory hits ground
     def hit_ground_event(_, y, idx):
@@ -88,7 +88,7 @@ def simulate(
     try:
         # this is where the number magic happens
         sol = solve_ivp(
-            partial(ode_right_hand_side, idx=idx, params=params),
+            partial(ode_right_hand_side, idx=idx, params=params, debug=debug),
             s_span,
             y0=state_vec,
             method="RK45",
@@ -97,15 +97,18 @@ def simulate(
             events=[event_func],
         )
     except AssertionError as e:
-        print(f"\nAssertionError: {e}\nDropping into debugger...\n")
-        pdb.post_mortem()
-        exit(1)
+        if debug:
+            print(f"\nAssertionError: {e}\nDropping into debugger...\n")
+            import pdb
+
+            pdb.post_mortem()
+        raise
 
     return sol, idx
 
 
 def ode_right_hand_side(
-    s: float, y: npt.NDArray, idx: dict[str, int], params: dict
+    s: float, y: npt.NDArray, idx: dict[str, int], params: dict, debug: bool = False
 ) -> npt.NDArray:
     """
     Encapsulates the right-hand side of the ODE system for the fire stream model. I.e.,
@@ -118,7 +121,8 @@ def ode_right_hand_side(
     - s: current streamwise position [m]
     - y: current state vector (1D numpy array)
     - idx: dictionary mapping variable names to indices in the state vector
-    - params: dict of derived parameters that only need to be computed once
+    - params: dict of given and computed-once parameters
+    - debug: enable for printouts
 
     Returns:
     - dyds: array of derivatives matching the shape of state_vec
@@ -128,15 +132,8 @@ def ode_right_hand_side(
     """
 
     assert len(y) == len(idx), "idx must match state vector y"
+    assert np.all(np.isfinite(y)), "Variables must be finite numbers"
     dyds = np.zeros_like(y)
-
-    if not np.all(np.isfinite(y)):
-        print("ERROR: One or more values NaN!")
-        for key, idx in idx.items():
-            val = y[idx]
-            if not np.isfinite(val):
-                print(f"{key} = {val}")
-        pdb.set_trace()
 
     # extract parameters
     num_drop_classes = params["num_drop_classes"]
@@ -172,17 +169,17 @@ def ode_right_hand_side(
     Ds = np.sqrt(max(Df**2 - Dc**2 - Da**2, 1e-6))
 
     # --- DEBUG PRINTOUTS --- #
-    print(
-        f"\ns={s:>6.3f} m\t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=: >6.3f} kg/m³"
-        f"\n Core\t\t{Uc=: >6.3f} m/s\t{Dc=: >6.3f} m"
-        f"\n Air\t\t{Ua=: >6.3f} m/s\t{Da=: >6.3f} m\ttheta_a={np.rad2deg(theta_a): >6.3f}°"
-        f"\n Stream\t\t{Uf=: >6.3f} m/s\t{Df=: >6.3f} m\ttheta_f={np.rad2deg(theta_f): >6.3f}°"
-    )
-    for i in range(num_drop_classes):
+    if debug:
         print(
-            f" Drops[{i}]\tUs={Us[i]: >6.3f} m/s\tND={ND[i]:.2g} /sec\ttheta_s={np.rad2deg(theta_s[i]): >5.3f}°"
+            f"\ns={s:>6.3f} m\t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=: >6.3f} kg/m³"
+            f"\n Core\t\t{Uc=: >6.3f} m/s\t{Dc=: >6.3f} m"
+            f"\n Air\t\t{Ua=: >6.3f} m/s\t{Da=: >6.3f} m\ttheta_a={np.rad2deg(theta_a): >6.3f}°"
+            f"\n Stream\t\t{Uf=: >6.3f} m/s\t{Df=: >6.3f} m\ttheta_f={np.rad2deg(theta_f): >6.3f}°"
         )
-    # print(dyds)
+        for i in range(num_drop_classes):
+            print(
+                f" Drops[{i}]\tUs={Us[i]: >6.3f} m/s\tND={ND[i]:.2g} /sec\ttheta_s={np.rad2deg(theta_s[i]): >5.3f}°"
+            )
 
     # --- PHYSICAL FEASIBILITY CHECKS --- #
     # helps with debugging
@@ -392,7 +389,8 @@ def ode_right_hand_side(
         ) / (2 * np.pi * Dc * Uc**2 * rho_w)
         # assert dyds[idx["Dc"]] <= 1e-6, f"{Dc=} can't increase!"
     else:
-        print("--- BREAKUP HAPPENED ---")
+        if debug:
+            print("--- BREAKUP HAPPENED ---")
         params["has_breakup_happened"] = True
 
         # Create droplets at breakup point
@@ -504,17 +502,17 @@ def ode_right_hand_side(
     # dyds[idx["Dc"]] = 0.0
     # dyds[idx["Ua"]] = -0.01
     # dyds[idx["Da"]] = 0.01
-    # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
+    dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
     for i in range(num_drop_classes):
         # dyds[idx[f"ND_{i}"]] = 0.0
-        # dyds[idx[f"Us_{i}"]] = 0.0
-        # dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
+        dyds[idx[f"Us_{i}"]] = 0.0
+        dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
         ...
 
     # dyds[idx["Uf"]] = 0.0
     # dyds[idx["Df"]] = 0.0
     # dyds[idx["theta_f"]] = -0.01
-    # dyds[idx["rho_f"]] = -rho_f * 0.05
+    dyds[idx["rho_f"]] = -rho_f * 0.05
 
     # On to the next simulation step!
     return dyds

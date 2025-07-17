@@ -1,10 +1,12 @@
 # Fire stream trajectory model — Valencia et al.
 
-*NOTE:* Work in progress and currently not functional!
-There seem to be errors in the ODE system. Example plots were generated with some of the computations bypassed.
+**NOTE:** Work in progress and currently not functional!
+There seem to be errors in the ODE system.
+Example plots were generated with some of the computations bypassed.
 
 This is a Python module for simulating the trajectories of "fire streams", i.e.,
-large water jets shot from fire monitors. The backbone is a 1D Eulerian analytical
+large water jets shot from fire monitors.
+The backbone is a 1D Eulerian analytical
 model reproduced from this publication:
 
 ```bibtex
@@ -39,24 +41,27 @@ To get the equations from the paper into the form expected by SciPy's `solve_ivp
 ## Usage
 
 User has to supply:
-- Injection angle above the horizon (between 0 and 90°)
-- Injection velocity [m/s]
-- simulation span (from 0 to an upper bound of the trajectory's length along s)
+- theta_0: injection angle above the horizon in range (0°, 90°)
+- U_0: injection speed [m/s]
+- s_end: maximum value for s, aka the simulation limit [m]
 
-The core library is designed to be easily importable into other projects.
-For testing purposes, a simple CLI is provided.
+The core logic, found in the [model](model) folder, is designed to be easily importable into other projects.
+
+For testing purposes, a simple **CLI** is provided as well.
+It calls `model.simulator.simulate()` to simulate a fire stream trajectory with the given arguments.
+The results are saved as interactive HTML plots using bokeh.
 
 Example run:
 
 ``` 
-cd waterjet_pred_valencia
-./run_simulation.py -a 24 -s 30.8 -n 0.0254 -l 100
+python waterjet_pred_valencia.py --angle 24 --speed 30.8 --nozzle 0.0254 --max_s 100
 ``` 
 
 Run the command with the `-h` or `--help` option for a detailed usage description.
+Console output can be activated via the debug mode (option `-d`).
 
 To play around with physical and model constants (e.g., the air entrainment rate alpha),
-edit `model/parameters.py`.
+edit [model/parameters.py](model/parameters.py).
 
 ## To-Dos
 
