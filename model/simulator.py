@@ -494,25 +494,25 @@ def ode_right_hand_side(
     if s < s_brk:
         assert dyds[idx["y"]] >= 0.0, "Trajectory can't fall before core break-up"
 
-    # --- TEMPORARY WORKAROUND FOR BUGGY ODE --- #
-    # By outcommenting these lines, set derivatives to a fixed value.
-    # This effectively disables faulty calculations until the root cause can be identified.
+        # --- TEMPORARY WORKAROUND FOR BUGGY ODE --- #
+        # By outcommenting these lines, set derivatives to a fixed value.
+        # This effectively disables faulty calculations until the root cause can be identified.
 
-    # dyds[idx["Uc"]] = 0.0
-    # dyds[idx["Dc"]] = 0.0
-    # dyds[idx["Ua"]] = -0.01
-    # dyds[idx["Da"]] = 0.01
-    dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
-    for i in range(num_drop_classes):
+        # dyds[idx["Uc"]] = 0.0
+        # dyds[idx["Dc"]] = 0.0
+        # dyds[idx["Ua"]] = -0.01
+        # dyds[idx["Da"]] = 0.01
+        # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
+        # for i in range(num_drop_classes):
         # dyds[idx[f"ND_{i}"]] = 0.0
-        dyds[idx[f"Us_{i}"]] = 0.0
-        dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
+        # dyds[idx[f"Us_{i}"]] = 0.0
+        # dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
         ...
 
     # dyds[idx["Uf"]] = 0.0
     # dyds[idx["Df"]] = 0.0
     # dyds[idx["theta_f"]] = -0.01
-    dyds[idx["rho_f"]] = -rho_f * 0.05
+    # dyds[idx["rho_f"]] = -rho_f * 0.05
 
     # On to the next simulation step!
     return dyds
