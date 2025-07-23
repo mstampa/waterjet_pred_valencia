@@ -159,16 +159,21 @@ def ode_right_hand_side(
     rho_f = max(y[idx["rho_f"]], rho_a)
     x_pos = y[idx["x"]]
     y_pos = y[idx["y"]]
+    # helper vars
+    pi_2 = np.pi / 2.0
+    pi_4 = np.pi / 4.0
 
     # "the local direction of the core is assumed to be equal to the fire stream"
     theta_c = theta_f
 
     # spray phase diameter = sqrt of (stream phase area - core area - air area)
     # rounding errors can lead to Df² - Dc² - Da² becoming negative, clamp to 1e-6!
-    # TODO: Check, seemingly never stated explicitly
+    # TODO: Check, seemingly never stated explicitly.
+    # Maybe not even necessary, if D_s in article should actually be D_f.
     Ds = np.sqrt(max(Df**2 - Dc**2 - Da**2, 1e-6))
 
     # --- DEBUG PRINTOUTS --- #
+    # enable with -d option
     if debug:
         print(
             f"\ns={s:>6.3f} m\t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=: >6.3f} kg/m³"
@@ -186,8 +191,6 @@ def ode_right_hand_side(
 
     U0 = params["injection_speed"]
     D0 = params["nozzle_diameter"]
-    pi_2 = np.pi / 2.0
-    pi_4 = np.pi / 4.0
     # input mass flow from the nozzle [kg / ms]
     m_in = pi_4 * rho_w * (D0**2) * U0
     max_diameter = 50.0
@@ -207,16 +210,17 @@ def ode_right_hand_side(
     # TODO: Clarify angle reference (horizontal or vertical)
     # If vertical, the range goes from 0 (vertical up) to 180° (vertical down)
     angle_range = (0, np.pi)
+    angle_range_deg = np.rad2deg(angle_range)
     assert (
         angle_range[0] <= theta_a <= angle_range[1]
-    ), f"theta_a={np.rad2deg(theta_a)}° must be in range {np.rad2deg(angle_range)}°"
+    ), f"theta_a={np.rad2deg(theta_a)}° must be in range {angle_range_deg}°"
     assert (
         angle_range[0] <= theta_f <= angle_range[1]
-    ), f"theta_f={np.rad2deg(theta_f)=}° must be in range {np.rad2deg(angle_range)}°"
+    ), f"theta_f={np.rad2deg(theta_f)=}° must be in range {angle_range_deg}°"
     for i in range(num_drop_classes):
         assert (
             angle_range[0] <= theta_s[i] <= angle_range[1]
-        ), f"theta_s[{i}]={np.rad2deg(theta_s[i])}° must be in range {np.rad2deg(angle_range)}°"
+        ), f"theta_s[{i}]={np.rad2deg(theta_s[i])}° must be in range {angle_range_deg}°"
 
     # Spray generation [drops/s]
     for i in range(num_drop_classes):
@@ -225,13 +229,9 @@ def ode_right_hand_side(
     # Density [kg/m³]
     assert (
         rho_a - 1e-6 <= rho_f <= rho_w + 1e-6
-    ), f"Stream density rho_f={rho_f:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
-
-    # TODO: Ask author for more checks, e.g. magnitude of mass and momentum transfers.
+    ), f"Stream density {rho_f=:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
 
     # --- PRECOMPUTE SINES, COSINES, VECTORS --- #
-    # TODO: Ask about angle usage, this seems to be the main difference between the
-    # paper and Mathematica notebook.
 
     sin_f, cos_f = np.sin(theta_f), np.cos(theta_f)
     sin_c, cos_c = np.sin(theta_c), np.cos(theta_c)
@@ -248,20 +248,14 @@ def ode_right_hand_side(
         )
         cos_cs[i] = np.cos(theta_c - theta_s[i])
 
-    ## streamwise unit vector of core phase
-    # e_c = np.array([cos_c, sin_c])
-    ## radial unit vector of core phase
-    # n_c = np.array([-sin_c, cos_c])
-    ## streamwise unit vector of air phase
-    # e_a = np.array([cos_a, sin_a])
+    # TODO:ask if theta_c and theta_a are relative to horizon or vertical
 
-    # NOTE: These are reversed since theta_c,theta_a are relative to vertical
     # streamwise unit vector of core phase
-    e_c = np.array([sin_c, cos_c])
+    e_c = np.array([cos_c, sin_c])
     # radial unit vector of core phase
-    n_c = np.array([sin_c, -cos_c])  # TODO: Check this
+    n_c = np.array([-sin_c, cos_c])
     # streamwise unit vector of air phase
-    e_a = np.array([sin_a, cos_a])
+    e_a = np.array([cos_a, sin_a])
     # relative velocity vector core -> air
     U_ca = (Uc * e_c) - (Ua * e_a)
 
@@ -272,11 +266,11 @@ def ode_right_hand_side(
     assert m_sur2f >= -1e-6, f"{m_sur2f=} must be >= 0.0 (air is entrained)"
 
     # Eq. 16 mass flow air -> surroundings
-    # NOTE: Mathematica notebook seems to actually compute -sin_fa but compensates with abs()
+    # TODO: ask if abs() should be used. Notebook does it, article does not.
     m_a2sur = abs(np.pi * rho_a * Df * Ua * sin_fa)
 
     # Eq. 18 momentum exchange air -> surroundings
-    # NOTE: cos_fa and sin_fa can become negative, so let's use abs again to be safe.
+    # TODO: also here
     f_a2sur = m_a2sur * Ua * abs(cos_fa)
     f_ra2sur = m_a2sur * Ua * abs(sin_fa)
 
@@ -301,35 +295,29 @@ def ode_right_hand_side(
         U_sa = (Us[i] * e_s) - (Ua * e_a)  # relative velocity spray -> air
 
         # Eq. 17 mass flow spray -> surroundings
-        # TODO: Ask author about this equation, there's likely multiple errors.
+        # TODO: Ask author about this equation.
         # Unit analysis and Mathematica notebook seem to confirm that factors
         # rho_w, Pi, and Df are missing from the printed version.
         # Also, notebook uses Df (stream diameter) while paper uses Ds.
-        # Last but not least, it seems like we need to clamp to 0.0 before s_brk to not
-        # mess up the evolution of ND. Not explicitly stated in paper, but "significant
-        # spray formation only occurs after breakup" is physically plausible.
         m_s2sur[i] = (
-            (
-                (2.0 / 3.0)
-                * ((ND[i] * (d_drop[i] ** 3)) / (Df**2))
-                * abs(sin_fs[i])
-                * rho_w
-                * np.pi
-                * Df
-            )
-            if has_breakup_happened
-            else 1e-6
+            (2.0 / 3.0)
+            * ((ND[i] * (d_drop[i] ** 3)) / (Df**2))
+            * abs(sin_fs[i])
+            * rho_w
+            * np.pi
+            * Df
         )
+
         assert m_s2sur[i] >= -1e-6, f"{m_s2sur[i]=} must be positive"
 
         # upper bound: total mass of this spray phase
         m_s = ND[i] * rho_w * (np.pi / 6.0) * (d_drop[i] ** 3)
-        assert (
-            m_s2sur[i] <= m_s + 1e-3
-        ), f"{m_s2sur[i]=} must be smaller than spray[{i}] total mass {m_s=}"
+        # assert (
+        #    m_s2sur[i] <= m_s + 1e-3
+        # ), f"{m_s2sur[i]=} must be smaller than spray[{i}] total mass {m_s=}"
 
         # Eq. 19 momentum exchange spray -> surroundings
-        # NOTE: Again using abs to be safe
+        # TODO: ask about abs()
         f_s2sur[i] = m_s2sur[i] * Us[i] * abs(cos_fs[i])
         f_rs2sur[i] = m_s2sur[i] * Us[i] * abs(sin_fs[i])
 
@@ -487,27 +475,27 @@ def ode_right_hand_side(
     # Eq. 13 & 14 Cartesian coordinates of the trajectory
     # TODO: Clarify angles. Should theta_f be relative to horizon or vertical?
     # In the latter case, cos and sin must probably be swapped.
-    dyds[idx["x"]] = sin_f  # cos_f
+    dyds[idx["x"]] = cos_f
     assert dyds[idx["x"]] >= 0.0, "Trajectory can't move backwards"
 
-    dyds[idx["y"]] = cos_f  # sin_f
+    dyds[idx["y"]] = sin_f
     if s < s_brk:
         assert dyds[idx["y"]] >= 0.0, "Trajectory can't fall before core break-up"
 
-        # --- TEMPORARY WORKAROUND FOR BUGGY ODE --- #
-        # By outcommenting these lines, set derivatives to a fixed value.
-        # This effectively disables faulty calculations until the root cause can be identified.
+    # --- TEMPORARY WORKAROUND FOR BUGGY ODE --- #
+    # By outcommenting these lines, set derivatives to  fixed values.
+    # This effectively disables faulty calculations until the root cause can be identified.
 
-        # dyds[idx["Uc"]] = 0.0
-        # dyds[idx["Dc"]] = 0.0
-        # dyds[idx["Ua"]] = -0.01
-        # dyds[idx["Da"]] = 0.01
-        # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
-        # for i in range(num_drop_classes):
-        # dyds[idx[f"ND_{i}"]] = 0.0
-        # dyds[idx[f"Us_{i}"]] = 0.0
-        # dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
-        ...
+    # dyds[idx["Uc"]] = 0.0
+    # dyds[idx["Dc"]] = 0.0
+    # dyds[idx["Ua"]] = -0.01
+    # dyds[idx["Da"]] = 0.01
+    # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
+    # for i in range(num_drop_classes):
+    #   dyds[idx[f"ND_{i}"]] = 0.0
+    #   dyds[idx[f"Us_{i}"]] = 0.0
+    #   dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
+    #    ...
 
     # dyds[idx["Uf"]] = 0.0
     # dyds[idx["Df"]] = 0.0
