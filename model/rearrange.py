@@ -32,7 +32,8 @@ def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
     txt = txt.replace("sin(theta_s_i)", "sin_s[i]")
     txt = txt.replace("cos(theta_s_i)", "cos_s[i]")
     txt = txt.replace("_i", "[i]")
-    print(f'dyds[state_idx["{name}"]] = {txt}')
+    f_char = "f" if "[i]" in txt else ""
+    print(f'dyds[state_idx[{f_char}"{name}"]] = {txt}')
 
 
 # --- DEFINE SYMBOLS --- #
@@ -53,10 +54,12 @@ m_c2s_i, m_c2s_total = symbols("m_c2s_i m_c2s_total")  # to spray phase
 # momentum transfer from core phase
 f_c2a, f_rc2a = symbols("f_c2a, f_rc2a")  # to air phase
 f_c2s_i, f_rc2s_i = symbols("f_c2s_i f_rc2s_i")  # to spray phase
+
 # mass transfer from air phase
 m_a2sur = symbols("m_a2sur")  # to surroundings
 # momentum transfer from air phase
 f_a2sur, f_ra2sur = symbols("f_a2sur f_ra2sur")  # to surroundings
+
 # momentum transfer from spray phase
 m_s2sur_i, m_s2sur_total = symbols("m_s2sur_i m_s2sur_total")  # to surroundings
 # momentum transfer from spray phase
@@ -64,6 +67,7 @@ f_s2a_i, f_s2a_total = symbols("f_s2a_i, f_s2a_total")  # streamwise to air phas
 f_rs2a_i, f_rs2a_total = symbols("f_rs2a_i, f_rs2a_total")  # radial to air phase
 f_s2sur_i, f_s2sur_total = symbols("f_s2sur_i f_s2sur_total")  # s-wise to surroundings
 f_rs2sur_i, f_rs2sur_total = symbols("f_rs2sur_i f_rs2sur_total")  # radial to surr
+
 # mass transfer from surroundings
 m_sur2f = symbols("m_sur2f")  # to stream phase (air entrainment)
 
@@ -143,9 +147,6 @@ eq9 = (
 )
 
 # Spray streamwise momentum
-# TODO: Clarify angle definitions.
-# If theta were to mean angle above horizon, the projection of the vertical gravity
-# force in the first term on the RHS would require sin(), not cos().
 eq10 = (
     (pi / 4)
     * rho_f
@@ -154,7 +155,7 @@ eq10 = (
         + 2 * Df * rho_f * (Uf**2) * Df_
         + 2 * Uf * rho_f * (Df**2) * Uf_
     )
-    + (pi / 4) * (rho_f - rho_a) * (Df**2) * g * cos(theta_f)  # here!
+    + (pi / 4) * (rho_f - rho_a) * (Df**2) * g * cos(theta_f)
     + f_a2sur
     + f_s2sur_total
 )
@@ -175,6 +176,7 @@ eq11 = (
 # NOTE: Likely typo in paper, maybe a leftover from an earlier draft where subscript
 # "s" refered to "stream" and not "spray" (seems to be the case in Mathematica notebook).
 # Assuming Uf and Df are to be used here instead of Us and Ds.
+# TODO: Ask author
 eq12 = (
     (pi / 4) * (2 * Df * Uf * Df_ + (Df**2) * Uf_)
     - (m_sur2f / rho_a)
