@@ -26,7 +26,7 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     path_str = str(path)
     output_file(path_str, title="Fire stream simulation")
     x_margin = 1.0
-    s_end = sol.t[-1]  # last s coordinate to plot
+    s_end = sol.t[-1]  # last domain coordinate to plot
     if len(sol.t_events[0]) > 0:
         s_end = sol.t_events[0][0]  # s at ground impact
 
@@ -238,5 +238,4 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     )
 
     save(mylayout)
-    print(f"Plots saved to {path_str}.")
     return

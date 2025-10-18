@@ -8,15 +8,22 @@ from .simulator import simulate
 from .plotting import plot_solution
 
 from argparse import ArgumentParser, Namespace
+import logging
 from pathlib import Path
 from time import time
 
 
+clilogger = logging.getLogger("cli")
+
+
 def main():
+    log_fmt = "[{asctime}] [{levelname}] [{name}] {message}"
+    logging.basicConfig(format=log_fmt, style="{")
+
     args = get_arguments()
+    clilogger.setLevel(logging.DEBUG if args.debug else logging.INFO)
     for arg in vars(args):
-        print(arg, "=", getattr(args, arg))
-    print("")
+        clilogger.info(f"{arg} = {getattr(args, arg)}")
 
     run_simulation(args)
 
@@ -29,6 +36,7 @@ def run_simulation(args: Namespace) -> None:
         args: Parsed CLI arguments
     """
 
+    clilogger.info("Starting simulation...")
     start_time = time()
     sol, idx = simulate(
         args.speed,
@@ -37,11 +45,12 @@ def run_simulation(args: Namespace) -> None:
         s_span=(0.0, args.max_s),
         debug=args.debug,
     )
-    print(f"\nSimulation finished after {time() - start_time:.4f}s.")
+    clilogger.info(f"Simulation finished after {time() - start_time:.4f}s.")
 
+    clilogger.info(f"Plotting results in {args.plotpath}...")
     plot_solution(sol, idx, args.plotpath)
 
-    print(f"All done!")
+    clilogger.info(f"All done!")
     return
 
 
@@ -114,7 +123,6 @@ def get_arguments() -> Namespace:
 # ---------------------------------------------------------------------------
 # ENTRY POINT
 # ---------------------------------------------------------------------------
-
 
 if __name__ == "__main__":
     main()

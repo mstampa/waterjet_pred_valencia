@@ -19,10 +19,13 @@ Parameter "max_step" can be adjusted to trade accuracy for performance.
 from .parameters import *
 
 from functools import partial
+import logging
 import numpy as np
 from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 from scipy.integrate._ivp.ivp import OdeResult
+
+simlogger = logging.getLogger("simulator")
 
 
 def simulate(
@@ -32,6 +35,7 @@ def simulate(
     s_span: tuple = (0, 100),
     max_step: float = 0.5,
     debug: bool = False,
+    method: str = "RK45",
 ) -> tuple[OdeResult, dict[str, int]]:
     """
     Run the fire stream simulation for given injection parameters.
@@ -42,12 +46,14 @@ def simulate(
         nozzle_diameter: D_0 [m]
         s_span: (start, end) in streamwise domain s [m]
         max_step: Max integration step size [m]
+        method: See documentation for scipy.integrate.solve_ivp
         debug: enable debug mode (with console printouts and auto-activation of PDB)
 
     Returns:
         sol: ODE solution object
         idx: Maps variable names to indices in solution vector.
     """
+    simlogger.setLevel(logging.DEBUG if debug else logging.INFO)
 
     # ensure parameter correctness
     assert injection_speed > 0.0, "Injection speed must be positive"
@@ -67,7 +73,6 @@ def simulate(
         injection_angle_deg=injection_angle_deg,
         nozzle_diameter=nozzle_diameter,
     )
-    assert params.s_brk > 0.0, "f{params.s_brk=} must be positive"
 
     # construct state vector and an index for it
     idx = build_state_idx(params.num_drop_classes)
@@ -90,18 +95,18 @@ def simulate(
             partial(ode_right_hand_side, idx=idx, params=params, debug=debug),
             s_span,
             y0=state_vec,
-            method="RK45",
+            method=method,
             max_step=max_step,
             dense_output=True,
             events=[event_func],
         )
     except Exception as e:
+        simlogger.error(f"{e}")
         if debug:
-            print(f"\nException: {e}\nDropping into debugger...\n")
             import pdb
 
             pdb.post_mortem()
-        raise
+        raise e
 
     return sol, idx
 
@@ -123,7 +128,7 @@ def ode_right_hand_side(
         y: current state vector (1D numpy array)
         idx: dictionary mapping variable names to indices in the state vector
         params: given and computed-once parameters
-        debug: enable for console printouts and auto-dropping into PDB on error
+        debug: enable debug mode (console printouts)
 
     Returns:
         dyds: array of derivatives matching the shape and ordering of idx
@@ -156,19 +161,19 @@ def ode_right_hand_side(
     # "the local direction of the core is assumed to be equal to the fire stream"
     theta_c: float = theta_f
 
-    # --- DEBUG PRINTOUTS --- #
-    # enable with -d option
+    # TODO: Make this work with simlogger
     if debug:
         print(
-            f"\ns={s:>6.3f} m\t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=: >6.3f} kg/m³"
-            f"\n Core\t\t{Uc=: >6.3f} m/s\t{Dc=: >6.3f} m\ttheta_c={np.rad2deg(theta_c): >6.3f}°"
-            f"\n Air\t\t{Ua=: >6.3f} m/s\t{Da=: >6.3f} m\ttheta_a={np.rad2deg(theta_a): >6.3f}°"
-            f"\n Stream\t\t{Uf=: >6.3f} m/s\t{Df=: >6.3f} m\ttheta_f={np.rad2deg(theta_f): >6.3f}°"
+            f"{s=:>6.3f}m \t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=:>6.3f} kg/m³"
+            + f"\n  Core\t\t{Uc=:>6.3f}m/s\t{Dc=:>6.3f}m\ttheta_c={np.rad2deg(theta_c):>6.3f}°"
+            + f"\n  Air\t\t{Ua=:>6.3f}m/s\t{Da=:>6.3f}m\ttheta_a={np.rad2deg(theta_a):>6.3f}°"
+            + f"\n  Stream\t{Uf=:>6.3f}m/s\t{Df=:>6.3f}m\ttheta_f={np.rad2deg(theta_f): >6.3f}°"
         )
         for i in range(params.num_drop_classes):
             print(
-                f" Drops[{i}]\tUs={Us[i]: >6.3f} m/s\tND={ND[i]:.2g} /sec\ttheta_s={np.rad2deg(theta_s[i]): >5.3f}°"
+                f"  Drops[{i}]\tUs={Us[i]:>6.3f}m/s\tND={ND[i]:.2g}/sec\ttheta_s={np.rad2deg(theta_s[i]):>5.3f}°"
             )
+        print("")
 
     # --- PHYSICAL FEASIBILITY CHECKS --- #
     # helps with debugging
@@ -365,8 +370,7 @@ def ode_right_hand_side(
             np.pi * Dc**2 * g * rho_w * cos_c - 4 * Uc * m_c2s_total + 4 * f_c2a
         ) / (2 * np.pi * Dc * Uc**2 * rho_w)
     else:
-        if debug:
-            print("--- BREAKUP HAPPENED ---")
+        simlogger.debug("--- BREAKUP HAPPENED ---")
         params._has_breakup_happened = True
 
         # Create droplets at breakup point

@@ -105,8 +105,8 @@ def get_reynolds_number(Us: float, d: float) -> float:
     Returns:
         Reynolds number [-]
     """
-    assert Us > 0.0, f"Spray velocity must be positive, is {Us=}"
-    assert d > 0.0, "Drop diameter must be positive"
+    assert Us > 0.0, f"Spray velocity {Us=} m/s must be positive"
+    assert d > 0.0, f"Drop diameter {d=} m must be positive"
     return Us * d * rho_w / mu_w
 
 
@@ -138,7 +138,9 @@ def get_breakup_distance(nozzle_diameter: float) -> float:
         s_brk: Break-up location along the streamwise axis s [m]
     """
     # Note: rho_g in the paper (g for gas?) is rho_a (air) in our case
-    return nozzle_diameter * 11 * np.sqrt(rho_w / rho_a)
+    s_brk: float = nozzle_diameter * 11 * np.sqrt(rho_w / rho_a)
+    assert s_brk > 0.0, f"{s_brk=} must be positive"
+    return s_brk
 
 
 #
