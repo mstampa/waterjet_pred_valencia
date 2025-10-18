@@ -16,7 +16,7 @@ from .parameters import *
 
 from functools import partial
 import numpy as np
-import numpy.typing as npt
+from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 from scipy.integrate._ivp.ivp import OdeResult
 
@@ -32,17 +32,17 @@ def simulate(
     """
     Run the fire stream simulation for given injection parameters.
 
-    Parameters:
-    - injection_speed: U_0 [m/s]
-    - injection_angle_deg: theta_0, relative to horizon [deg]
-    - nozzle_diameter: D_0 [m]
-    - s_span: (start, end) in streamwise domain s [m]
-    - max_step: Max integration step size [m]
-    - debug: enable debug mode (with console printouts and auto-activation of PDB)
+    Args:
+        injection_speed: U_0 [m/s]
+        injection_angle_deg: theta_0, relative to horizon [deg]
+        nozzle_diameter: D_0 [m]
+        s_span: (start, end) in streamwise domain s [m]
+        max_step: Max integration step size [m]
+        debug: enable debug mode (with console printouts and auto-activation of PDB)
 
     Returns:
-    - sol: ODE solution object
-    - idx: Maps variable names to indices in solution vector.
+        sol: ODE solution object
+        idx: Maps variable names to indices in solution vector.
     """
 
     # ensure parameter correctness
@@ -109,27 +109,26 @@ def simulate(
 
 
 def ode_right_hand_side(
-    s: float, y: npt.NDArray, idx: dict[str, int], params: dict, debug: bool = False
-) -> npt.NDArray:
+    s: float, y: NDArray, idx: dict[str, int], params: dict, debug: bool = False
+) -> NDArray:
     """
     Encapsulates the right-hand side of the ODE system for the fire stream model. I.e.,
     it computes the derivative (dyds) of every element in the state vector at the
     streamwise coordinate 's'.
 
     The equations are derived with rearrange.py from the originals in the paper.
+    Physical and models constants (g, rho_w, rho_a, etc.) are assumed to be accessible
+    globally.
 
-    Parameters:
-    - s: current streamwise position [m]
-    - y: current state vector (1D numpy array)
-    - idx: dictionary mapping variable names to indices in the state vector
-    - params: dict of given and computed-once parameters
-    - debug: enable for printouts
+    Args:
+        s: current streamwise position [m]
+        y: current state vector (1D numpy array)
+        idx: dictionary mapping variable names to indices in the state vector
+        params: dict of given and computed-once parameters
+        debug: enable for printouts
 
     Returns:
-    - dyds: array of derivatives matching the shape of state_vec
-
-    Notes:
-    - Physical and models constants (g, rho_w, rho_a, etc.) are assumed to be accessible globally.
+        dyds: array of derivatives matching the shape of idx
     """
 
     assert len(y) == len(idx), "state vector and its index must have the same length"
@@ -298,7 +297,6 @@ def ode_right_hand_side(
         # Eq. 17 mass flow spray -> surroundings
         # NOTE: Typos in research article, confirmed by the author.
         # Factors rho_w, Pi, Df were missing, and it used the wrong diameter (Ds instead of Df).
-        # TODO: Verify!
         m_s2sur[i] = max(
             1e-6,
             (2.0 / 3.0)
@@ -524,11 +522,11 @@ def build_state_idx(n_classes: int) -> dict[str, int]:
     Builds a dictionary, mapping state variable names to their corresponding index in
     the state vector, following a structured layout. Helps to use state vector consistenly.
 
-    Parameters:
-    - n_classes: number of droplet classes
+    Args:
+        n_classes: number of droplet classes
 
     Returns:
-    - idx (dict): mapping from variable names to indices
+        idx (dict): mapping from variable names to indices
     """
 
     assert n_classes > 0
@@ -572,18 +570,18 @@ def get_initial_state_vector(
     injection_angle_deg: float,
     nozzle_diameter: float,
     idx: dict,
-) -> npt.NDArray:
+) -> NDArray:
     """
     Prepare the initial state vector of the fire stream (see appendix of paper).
 
-    Parameters:
-    - injection_speed: U_0 [m/s]
-    - injection_angle_deg: theta_0 (relative to horizon) [deg]
-    - nozzle_diameter: D_0 [m]
-    - idx: Index of state vector (has to be consistent with the simulation)
+    Args:
+        injection_speed: U_0 [m/s]
+        injection_angle_deg: theta_0 (relative to horizon) [deg]
+        nozzle_diameter: D_0 [m]
+        idx: Index of state vector (has to be consistent with the simulation)
 
     Returns:
-    - y0: Initial state vector
+        y0: Initial state vector
     """
 
     # TODO: Check if notebook has notable differences
@@ -613,7 +611,7 @@ def get_initial_state_vector(
     # Eq 38-40 air phase
     # NOTE: -1e-6 from notebook, not paper
     state_vec[idx["Ua"]] = injection_speed - 1e-6
-    # NOTE: different from paper (0.0) to prevent singularity in dyds[Ua] calculation
+    # NOTE: not 0.0 as in paper to prevent singularity in dyds[Ua] calculation
     state_vec[idx["Da"]] = nozzle_diameter
     state_vec[idx["theta_a"]] = injection_angle_rad
 

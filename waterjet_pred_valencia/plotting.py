@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Plot simulation results using bokeh.
-
-Creates a HTML with interactive plots. May be change to PNG exports later.
+Plot simulation results using bokeh and saves them into an HTML file.
 """
 
 from bokeh.layouts import layout
@@ -19,10 +17,10 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     """
     Plots trajectory and evolution of variables over the streamwise axis s.
 
-    Parameters:
-    - sol: ODE solution object from solve_ivp
-    - state_idx: Mapping of variable names to indices in sol.y
-    - path: Where to save HTML containing the plots to
+    Args:
+        sol: ODE solution object from solve_ivp
+        state_idx: Mapping of variable names to indices in sol.y
+        path: Where to save HTML containing the plots to
     """
 
     path_str = str(path)
@@ -72,8 +70,6 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     # The stream has an evolving diameter. Imagine a disc around the trajectory line at
     # a given point. To plot it properly, the disc needs to be rotated by the streams
     # angle at each point.
-    # TODO: Clarify angle usage. The following expects 'above horizon', so we take
-    # the 90° complement of theta_f.
     upper = np.array([source.data["x"], source.data["y"]]).T
     lower = np.copy(upper)
     for i in range(np.size(sol.t)):
@@ -240,7 +236,7 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
         ],  # pyright: ignore
         sizing_mode="stretch_width",
     )
+
     save(mylayout)
     print(f"Plots saved to {path_str}.")
-
     return

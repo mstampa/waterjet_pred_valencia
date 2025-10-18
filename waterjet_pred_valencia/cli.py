@@ -4,20 +4,29 @@
 User interface for testing, demonstration etc.
 """
 
-from model.simulator import simulate
-from plotting import plot_solution
+from .simulator import simulate
+from .plotting import plot_solution
 
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from time import time
 
 
-def main(args: Namespace) -> None:
-    """
-    Run a fire stream simulation with default parameters (Test 5).
+def main():
+    args = get_arguments()
+    for arg in vars(args):
+        print(arg, "=", getattr(args, arg))
+    print("")
 
-    Parameters:
-    - args: arguments from argparse
+    run_simulation(args)
+
+
+def run_simulation(args: Namespace) -> None:
+    """
+    Run a fire stream simulation using CLI arguments.
+
+    Args:
+        args: Parsed CLI arguments
     """
 
     start_time = time()
@@ -36,12 +45,14 @@ def main(args: Namespace) -> None:
     return
 
 
-def setup_arguments() -> ArgumentParser:
+def get_arguments() -> Namespace:
     """
-    Prepares arguments for the CLI.
+    Declares and parses arguments for the CLI.
+
+    Default values are largely taken from Test 5.
 
     Returns:
-    - ArgumentParser
+        argparse.Namespace: dict-like arguments
     """
 
     parser = ArgumentParser(
@@ -60,7 +71,7 @@ def setup_arguments() -> ArgumentParser:
     parser.add_argument(
         "-d",
         "--debug",
-        help="enable debug mode (activates console printouts, auto-drops into PDB).",
+        help="enable debug mode: activates console printouts, auto-drops into PDB on error.",
         action="store_true",
         default=False,
     )
@@ -97,19 +108,13 @@ def setup_arguments() -> ArgumentParser:
         default=30.8,
     )
 
-    return parser
+    return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
+
 if __name__ == "__main__":
-
-    parser = setup_arguments()
-    args = parser.parse_args()
-    for arg in vars(args):
-        print(arg, "=", getattr(args, arg))
-    print("")
-
-    main(args)
+    main()

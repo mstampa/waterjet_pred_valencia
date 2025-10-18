@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "waterjet"
+name = "waterjet_pred_valencia"
 version = "0.1.0"
 description = "Fire stream model derived from https://doi.org/10.1007/s10694-021-01175-1."
 authors = [
@@ -14,11 +14,11 @@ requires-python = ">=3.8"
 dependencies = [
     "bokeh",
     "numpy",
+    "pytest",
     "scipy",
     "sympy",
 ]
 
-# uncomment below later for CLI
-#[project.scripts]
-#run-simulation = "waterjet.prediction.valencia.run_simulation:main"
+[project.scripts]
+waterjet-pred-valencia = "waterjet_pred_valencia.cli:main"
 

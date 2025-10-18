@@ -1,2 +1,10 @@
-__pycache__/
+
+# Plots
 *.html
+
+# Python
+*.py[codz]
+__pycache__/
+
+# Packaging
+*.egg-info

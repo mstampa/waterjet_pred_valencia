@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 """
-Helper script to rearrange the equations from the research article into the form
-dy/ds = f(s, y) expected by the SciPi ODE solver (solve_ivp). Manual labor is reduced
-to expanding the derivates with product and chain rules.
+Helper script to rearrange the equations from the research article into the
+dy/ds = f(s, y) form expected by the SciPi ODE solver (solve_ivp).
+Manual labor is reduced to expanding the derivates with product and chain rules.
 """
 
 from sympy import Derivative, factor, symbols, solve, simplify, pi, sin, cos
@@ -12,14 +12,15 @@ from scipy.integrate._ivp.ivp import OdeResult
 
 
 def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
-    """Simplifies a solution for a given symbol and replaces strings such that the
+    """
+    Simplifies a solution for a given symbol and replaces strings such that the
     expression can be copy-pasted directly from the console printout into simulator.py
     with minimal changes.
 
-    Parameters:
-    - name: Name of the variable for which the derivative solution should be printed.
-    - deriv: SymPy symbol of the derivative.
-    - sol: ODE solution object.
+    Args:
+        name: Name of the variable for which the derivative solution should be printed.
+        deriv: SymPy symbol of the derivative.
+        sol: ODE solution object.
     """
 
     expr = factor(simplify(sol[deriv]))
@@ -38,16 +39,17 @@ def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
 
 # --- DEFINE SYMBOLS --- #
 
-# Water and air density, drop diameters
+# Model constants: water and air density, drop diameters
 rho_w, rho_a, d_drop_i = symbols("rho_w rho_a d_drop_i")
-# Core phase speed, diameter, angle
-Uc, Dc, theta_c = symbols("Uc Dc theta_c")
-# Air phase speed, diameter, angle
-Ua, Da, theta_a = symbols("Ua Da theta_a")
+
+# Speed, diameter and angle per phase
+Uc, Dc, theta_c = symbols("Uc Dc theta_c")  # core
+Ua, Da, theta_a = symbols("Ua Da theta_a")  # air
+Uf, Df, theta_f = symbols("Uf Df theta_f")  # stream
+# Stream density
+rho_f = symbols("rho_f")
 # Spray phase drop formation rate, speed, angle
 ND_i, Us_i, theta_s_i = symbols("ND_i Us_i theta_s_i")
-# Stream phase speed, diameter, angle, density
-Uf, Df, theta_f, rho_f = symbols("Uf Df theta_f rho_f")
 
 # mass transfer from core phase
 m_c2s_i, m_c2s_total = symbols("m_c2s_i m_c2s_total")  # to spray phase
@@ -173,10 +175,7 @@ eq11 = (
 )
 
 # Volume conservation
-# NOTE: Likely typo in paper, maybe a leftover from an earlier draft where subscript
-# "s" refered to "stream" and not "spray" (seems to be the case in Mathematica notebook).
-# Assuming Uf and Df are to be used here instead of Us and Ds.
-# TODO: Ask author
+# NOTE: Typo in paper: s refers to "stream" here and not "spray"
 eq12 = (
     (pi / 4) * (2 * Df * Uf * Df_ + (Df**2) * Uf_)
     - (m_sur2f / rho_a)

@@ -3,9 +3,9 @@
 """
 Provides various parameters needed for the fire stream model, including:
 
-* Physical constants
-* model constants such as air entrainment and drop distribution
-* empirical formulas (e.g., Weber number)
+- Physical constants
+- model constants such as air entrainment and drop distribution
+- empirical formulas (e.g., Weber number)
 """
 
 import numpy as np
@@ -47,12 +47,12 @@ def get_weber_number(injection_speed: float, nozzle_diameter: float) -> float:
 
     Note: Lowercase d_0 means nozzle diameter here, but droplet diameter elsewhere!
 
-    Parameters:
-    - injection_speed: U_0 [m/s]
-    - nozzle_diameter: d_0 [m]
+    Args:
+        injection_speed: U_0 [m/s]
+        nozzle_diameter: d_0 [m]
 
     Returns:
-    - Weber number [-]
+        Weber number [-]
     """
     assert injection_speed > 0.0, "Injection speed must be positive"
     assert nozzle_diameter > 0.0, "Nozzle diameter must be positive"
@@ -63,12 +63,12 @@ def get_reynolds_number(Us: float, d: float) -> float:
     """
     Computes a drop's Reynold's number, according to the formula given after Eq. 26.
 
-    Parameters:
-    - Us: drop speed [m/s]
-    - d: drop diameter [m]
+    Args:
+        Us: drop speed [m/s]
+        d: drop diameter [m]
 
     Returns:
-    - Reynolds number [-]
+        Reynolds number [-]
     """
     assert Us > 0.0, f"Spray velocity must be positive, is {Us=}"
     assert d > 0.0, "Drop diameter must be positive"
@@ -79,11 +79,11 @@ def get_drag_coefficient(Re_d: float) -> float:
     """
     Computes drag coefficient C_D according to Eq. 26.
 
-    Parameters:
-    - Re_d: Reynolds number [-]
+    Args:
+        Re_d: Reynolds number [-]
 
     Returns:
-    - Drag coefficient C_D [-]
+        Drag coefficient C_D [-]
     """
     assert Re_d > 0.0, "Reynolds number must be positive"
     if Re_d < 1000:
@@ -96,11 +96,14 @@ def get_breakup_distance(nozzle_diameter: float) -> float:
     """
     Computes s_brk according to eq. 27 (empirically found correlation)
 
-    Parameters:
-    - nozzle_diameter: [m]
+    Args:
+        nozzle_diameter: [m]
 
     Returns:
-    - s_brk: Break-up location along the streamwise axis s [m]
+        s_brk: Break-up location along the streamwise axis s [m]
     """
     # Note: rho_g in the paper (g for gas?) is rho_a (air) in our case
     return nozzle_diameter * 11 * np.sqrt(rho_w / rho_a)
+
+
+#
