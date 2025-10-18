@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Unit tests for water jet trajectory predictions.
@@ -10,8 +10,7 @@ import numpy as np
 import pytest
 
 
-# speeds and angles from Tab. 1
-# expected x and y from Fig. 4 or text
+# inputs taken from article's table 1, expected results from text and figure 4
 @pytest.mark.parametrize(
     "speed,angle_deg,exp_x_max,exp_y_max",
     [
@@ -29,7 +28,6 @@ def test_valencia_article_results(speed, angle_deg, exp_x_max, exp_y_max):
 
     x_last = sol.y[idx["x"], -1]
     y_max = np.max(sol.y[idx["y"], :])
-    # Df = sol.y[idx["Df"], :]
 
     assert np.isclose(
         x_last, exp_x_max, atol=3.0

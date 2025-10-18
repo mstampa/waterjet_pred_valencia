@@ -8,7 +8,42 @@ Provides various parameters needed for the fire stream model, including:
 - empirical formulas (e.g., Weber number)
 """
 
+from .parameters import *
+
+from dataclasses import dataclass
 import numpy as np
+
+
+@dataclass
+class SimParams:
+    """
+    Per-simulation parameters (given or computed once).
+    """
+
+    num_drop_classes: int = 0
+
+    # Flag to trigger droplet generation at s=s_brk
+    _has_breakup_happened: bool = False
+
+    def __init__(
+        self, injection_speed: float, injection_angle_deg: float, nozzle_diameter: float
+    ) -> None:
+        """
+        Constructor.
+
+        Args:
+            injection_speed: Water's speed as it exits the nozzle [m/s]
+            injection_angle_deg: Elevation angle of the nozzle [deg]
+            nozzle_diameter: Nozzle diameter [m]
+        """
+        self.injection_speed = injection_speed
+        self.injection_angle_deg = injection_angle_deg
+        self.nozzle_diameter = nozzle_diameter
+        self.num_drop_classes: int = len(d_drop)
+        self.s_brk = get_breakup_distance(self.nozzle_diameter)
+        self.weber = get_weber_number(self.injection_speed, self.nozzle_diameter)
+        return
+
 
 # ---------------------------------------------------------------------------
 # PHYSICAL CONSTANTS
