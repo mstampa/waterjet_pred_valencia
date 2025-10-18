@@ -8,8 +8,6 @@ Provides various parameters needed for the fire stream model, including:
 - empirical formulas (e.g., Weber number)
 """
 
-from .parameters import *
-
 from dataclasses import dataclass
 import numpy as np
 

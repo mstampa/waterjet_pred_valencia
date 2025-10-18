@@ -10,7 +10,7 @@ Requires parameters:
 - injection speed
 - injection angle
 - nozzle diameter
-- simulation span (typically 0 to max. expected arc length)
+- simulation span, typically (0, <upper bound of expected arc length>)
 
 Physical and model constants are imported from parameters.py.
 Parameter "max_step" can be adjusted to trade accuracy for performance.
@@ -24,6 +24,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 from scipy.integrate._ivp.ivp import OdeResult
+from typing import Dict, Tuple
 
 simlogger = logging.getLogger("simulator")
 
@@ -32,13 +33,13 @@ def simulate(
     injection_speed: float,
     injection_angle_deg: float,
     nozzle_diameter: float,
-    s_span: tuple = (0, 100),
-    max_step: float = 0.5,
-    debug: bool = False,
+    s_span: Tuple = (0, 100),
+    max_step: float = 0.1,
     method: str = "RK45",
-) -> tuple[OdeResult, dict[str, int]]:
+    debug: bool = False,
+) -> Tuple[OdeResult, Dict[str, int]]:
     """
-    Run the fire stream simulation for given injection parameters.
+    Simulates a fire stream with the given injection parameters.
 
     Args:
         injection_speed: U_0 [m/s]
@@ -50,8 +51,8 @@ def simulate(
         debug: enable debug mode (with console printouts and auto-activation of PDB)
 
     Returns:
-        sol: ODE solution object
-        idx: Maps variable names to indices in solution vector.
+        sol (OdeResult): the solution
+        idx (dict): Maps variable names (e.g., "Uc") to indices in solution vector.
     """
     simlogger.setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -67,7 +68,7 @@ def simulate(
     assert s_span[1] > s_span[0], "s_span end must be greater than start"
     assert max_step > 0.0, "max_step must be positive"
 
-    # parameters (either given or only computed once)
+    # store given parameters (includes one time calculation of breakup distance, Weber number)
     params = SimParams(
         injection_speed=injection_speed,
         injection_angle_deg=injection_angle_deg,
@@ -87,6 +88,9 @@ def simulate(
     event_func = partial(hit_ground_event, idx=idx)
     event_func.terminal = True  # pyright: ignore
     event_func.direction = -1  # pyright: ignore
+
+    # TODO: also stop when mass is depleted (rho_f approx. rho_a)
+    # Likely to happen when injection angle is high
 
     sol = OdeResult()
     try:
@@ -112,16 +116,20 @@ def simulate(
 
 
 def ode_right_hand_side(
-    s: float, y: NDArray, idx: dict[str, int], params: SimParams, debug: bool = False
-) -> NDArray:
+    s: float,
+    y: NDArray[np.floating],
+    idx: Dict[str, int],
+    params: SimParams,
+    debug: bool = False,
+) -> NDArray[np.floating]:
     """
     Encapsulates the right-hand side of the ODE system for the fire stream model. I.e.,
     it computes the derivative (dyds) of every element in the state vector at the
     streamwise coordinate 's'.
 
-    The equations are derived with rearrange.py from the originals in the paper.
+    The equations are derived with rearrange.py from the originals found in the paper.
     Physical and models constants (g, rho_w, rho_a, etc.) are assumed to be accessible
-    globally.
+    globally (imported from parameters.py)
 
     Args:
         s: current streamwise position [m]
@@ -137,7 +145,7 @@ def ode_right_hand_side(
     assert len(y) == len(idx), "state vector and its index must have the same length"
     assert np.all(np.isfinite(y)), "Variables must be finite numbers"
     dyds: np.ndarray = np.zeros_like(y)  # return vector
-    pi_2, pi_4 = np.pi / 2.0, np.pi / 4.0  # helper vars
+    pi_2, pi_4 = np.pi / 2.0, np.pi / 4.0  # helper vars for performance
 
     # extract variables from state vector and clamp to lower bounds if appropriate
     Uc = max(y[idx["Uc"]], 1e-3)
@@ -163,15 +171,17 @@ def ode_right_hand_side(
 
     # TODO: Make this work with simlogger
     if debug:
+        th_c_deg, th_a_deg, th_f_deg = np.rad2deg([theta_c, theta_a, theta_f])
         print(
             f"{s=:>6.3f}m \t{x_pos=:.3f}\t{y_pos=:.3f}\t{rho_f=:>6.3f} kg/m³"
-            + f"\n  Core\t\t{Uc=:>6.3f}m/s\t{Dc=:>6.3f}m\ttheta_c={np.rad2deg(theta_c):>6.3f}°"
-            + f"\n  Air\t\t{Ua=:>6.3f}m/s\t{Da=:>6.3f}m\ttheta_a={np.rad2deg(theta_a):>6.3f}°"
-            + f"\n  Stream\t{Uf=:>6.3f}m/s\t{Df=:>6.3f}m\ttheta_f={np.rad2deg(theta_f): >6.3f}°"
+            + f"\n  Core\t\t{Uc=:>6.3f}m/s\t{Dc=:>6.3f}m\ttheta_c={th_c_deg:>6.3f}°"
+            + f"\n  Air\t\t{Ua=:>6.3f}m/s\t{Da=:>6.3f}m\ttheta_a={th_a_deg:>6.3f}°"
+            + f"\n  Stream\t{Uf=:>6.3f}m/s\t{Df=:>6.3f}m\ttheta_f={th_f_deg: >6.3f}°"
         )
         for i in range(params.num_drop_classes):
+            th_s_deg = np.rad2deg(theta_s[i])
             print(
-                f"  Drops[{i}]\tUs={Us[i]:>6.3f}m/s\tND={ND[i]:.2g}/sec\ttheta_s={np.rad2deg(theta_s[i]):>5.3f}°"
+                f"  Drops[{i}]\tUs={Us[i]:>6.3f}m/s\tND={ND[i]:.2g}/sec\ttheta_s={th_s_deg:>5.3f}°"
             )
         print("")
 
@@ -346,7 +356,7 @@ def ode_right_hand_side(
     ), f"Mass transfer core->spray {m_c2s_total} must be <= intake {m_in} kg / m·s"
     m_s2sur_total: float = np.sum(m_s2sur)  # eq 17
     f_s2a_total: float = np.sum(f_s2a)  # eq 25 top
-    f_rs2a_total: float = np.sum(f_s2a)  # eq 25 bottom
+    f_rs2a_total: float = np.sum(f_rs2a)  # eq 25 bottom
     f_s2sur_total: float = np.sum(f_s2sur)  # eq 19 top
     f_rs2sur_total: float = np.sum(f_rs2sur)  # eq 19 bottom
 
@@ -493,7 +503,7 @@ def ode_right_hand_side(
     # dyds[idx["Ua"]] = -0.01
     # dyds[idx["Da"]] = 0.01
     # dyds[idx["theta_a"]] = dyds[idx["theta_f"]]
-    # for i in range(num_drop_classes):
+    # for i in range(params.num_drop_classes):
     #   dyds[idx[f"ND_{i}"]] = 0.0
     #   dyds[idx[f"Us_{i}"]] = 0.0
     #   dyds[idx[f"theta_s_{i}"]] = dyds[idx["theta_f"]]
@@ -513,7 +523,7 @@ def ode_right_hand_side(
 # ---------------------------------------------------------------------------
 
 
-def build_state_idx(n_classes: int) -> dict[str, int]:
+def build_state_idx(n_classes: int) -> Dict[str, int]:
     """
     Builds a dictionary, mapping state variable names to their corresponding index in
     the state vector, following a structured layout. Helps to use state vector consistenly.
@@ -565,8 +575,8 @@ def get_initial_state_vector(
     injection_speed: float,
     injection_angle_deg: float,
     nozzle_diameter: float,
-    idx: dict,
-) -> NDArray:
+    idx: Dict[str, int],
+) -> NDArray[np.floating]:
     """
     Prepare the initial state vector of the fire stream (see appendix of paper).
 
@@ -574,10 +584,10 @@ def get_initial_state_vector(
         injection_speed: U_0 [m/s]
         injection_angle_deg: theta_0 (relative to horizon) [deg]
         nozzle_diameter: D_0 [m]
-        idx: Index of state vector (has to be consistent with the simulation)
+        idx: Mapping of variable names to indices in state vector
 
     Returns:
-        y0: Initial state vector
+        y0: (N,) Initial state vector
     """
 
     # TODO: Check if notebook has notable differences
@@ -588,7 +598,7 @@ def get_initial_state_vector(
     injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
 
     # initialize state vector with all zeros
-    state_vec = np.zeros(len(idx))
+    state_vec: NDArray = np.zeros(len(idx), dtype=np.float32)
 
     # position
     state_vec[idx["x"]] = 0.0
@@ -618,6 +628,3 @@ def get_initial_state_vector(
     state_vec[idx["rho_f"]] = rho_w
 
     return state_vec
-
-
-#
