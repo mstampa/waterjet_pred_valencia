@@ -20,8 +20,8 @@ class SimParams:
 
     num_drop_classes: int = 0
 
-    # Flag to trigger droplet generation at s=s_brk
-    _has_breakup_happened: bool = False
+    # Flag indicating if simulation is at s > s_brk
+    _is_post_breakup: bool = False
 
     def __init__(
         self, injection_speed: float, injection_angle_deg: float, nozzle_diameter: float
