@@ -59,6 +59,7 @@ sigma_w = 0.0728  # Surface tension of water [N/m]
 
 # Droplet diameters [m]
 d_drop = np.array([0.0005, 0.002, 0.003, 0.004, 0.005])
+num_drop_classes = len(d_drop)
 
 # Volume/mass fractions for each drop class (sum to 1)
 p_d = np.array([0.05, 0.25, 0.30, 0.25, 0.15])

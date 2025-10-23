@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Plot simulation results using bokeh and saves them into an HTML file.
+Plots simulation results using bokeh, exports as HTML.
 """
+
+from .jet_state import JetState
 
 from bokeh.layouts import layout
 from bokeh.models import ColumnDataSource, Range1d
@@ -35,17 +37,21 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     source = ColumnDataSource(
         data={
             "s": sol.t,
-            "Uc": sol.y[state_idx["Uc"], :],
-            "Dc": sol.y[state_idx["Dc"], :],
-            "Ua": sol.y[state_idx["Ua"], :],
-            "Da": sol.y[state_idx["Da"], :],
-            "theta_a_deg": np.rad2deg(np.pi / 2 - sol.y[state_idx["theta_a"], :]),
-            "Uf": sol.y[state_idx["Uf"], :],
-            "Df": sol.y[state_idx["Df"], :],
-            "theta_f_deg": np.rad2deg(np.pi / 2 - sol.y[state_idx["theta_f"], :]),
-            "rho_f": sol.y[state_idx["rho_f"], :],
-            "x": sol.y[state_idx["x"], :],
-            "y": sol.y[state_idx["y"], :],
+            "Uc": sol.y[JetState.get_idx("Uc"), :],
+            "Dc": sol.y[JetState.get_idx("Dc"), :],
+            "Ua": sol.y[JetState.get_idx("Ua"), :],
+            "Da": sol.y[JetState.get_idx("Da"), :],
+            "theta_a_deg": np.rad2deg(
+                np.pi / 2 - sol.y[JetState.get_idx("theta_a"), :]
+            ),
+            "Uf": sol.y[JetState.get_idx("Uf"), :],
+            "Df": sol.y[JetState.get_idx("Df"), :],
+            "theta_f_deg": np.rad2deg(
+                np.pi / 2 - sol.y[JetState.get_idx("theta_f"), :]
+            ),
+            "rho_f": sol.y[JetState.get_idx("rho_f"), :],
+            "x": sol.y[JetState.get_idx("x"), :],
+            "y": sol.y[JetState.get_idx("y"), :],
         }
     )
     for i in range(5):
@@ -54,8 +60,8 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     # prepare main plot (water jet trajectory)
     p_traj = figure(
         title="Fire stream trajectory",
-        x_axis_label="x [m]",
-        y_axis_label="y [m]",
+        x_axis_label="x / m",
+        y_axis_label="y / m",
         match_aspect=True,
     )
     p_traj.line(
@@ -74,7 +80,7 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
     lower = np.copy(upper)
     for i in range(np.size(sol.t)):
         r = sol.y[state_idx["Df"], i] / 2.0
-        theta = np.pi / 2 - sol.y[state_idx["theta_f"], i]
+        theta = np.pi / 2 - sol.y[JetState.get_idx("theta_f"), i]
         sin_t, cos_t = np.sin(theta), np.cos(theta)
         rot = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
         upper[i, :] += np.dot(rot, np.array([0, r]))
@@ -170,7 +176,7 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
         title="Phase angles (above horizon)",
         x_axis_label=x_axis_label,
         x_range=x_range,
-        y_axis_label="Angle / °",
+        y_axis_label="Angle / deg",
     )
     p_angles.line(
         "s",
@@ -197,7 +203,7 @@ def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None
         x_range=x_range,
         y_axis_label="ND / drops/s",
         y_axis_type="log",
-        y_range=Range1d(0.0, 1e8),
+        y_range=Range1d(0.0, 1e7),
     )
     for i in range(5):
         p_nd.line(

@@ -16,6 +16,7 @@ Physical and model constants are imported from parameters.py.
 Parameter "max_step" can be adjusted to trade accuracy for performance.
 """
 
+from .jet_state import JetState
 from .parameters import *
 
 from functools import partial
@@ -35,11 +36,11 @@ def simulate(
     injection_angle_deg: float,
     nozzle_diameter: float,
     s_span: Tuple = (0, 100),
-    max_step: float = 1e-2,  # 1cm
+    max_step: float = 1e-3,
     method: str = "Radau",
     debug: bool = False,
     bypass: Optional[Dict[str, float]] = None,
-) -> Tuple[OdeResult, Dict[str, int]]:
+) -> OdeResult:
     """
     Simulates a fire stream with the given injection parameters.
 
@@ -55,7 +56,6 @@ def simulate(
 
     Returns:
         sol (OdeResult): the solution
-        idx (dict): Maps variable names (e.g., "Uc") to indices in solution vector.
     """
 
     # setup logging
@@ -89,38 +89,36 @@ def simulate(
         nozzle_diameter=nozzle_diameter,
     )
 
-    # construct state vector and an index for it
-    idx = build_state_idx(params.num_drop_classes)
-    state_vec = get_initial_state_vector(
-        injection_speed, injection_angle_deg, nozzle_diameter, idx
+    # construct initial state vector
+    state_vec = JetState.get_initial(
+        injection_speed, injection_angle_deg, nozzle_diameter
     )
 
     # this event stops the simulation when trajectory hits ground
-    def hit_ground_event(_, y, idx) -> float:
-        return y[idx["y"]]  # vertical coordinate
+    def hit_ground_event(_, y) -> float:
+        idx = JetState.get_idx("y")
+        return y[idx]  # vertical coordinate
 
-    ev_ground: partial[float] = partial(hit_ground_event, idx=idx)
+    ev_ground: partial[float] = partial(hit_ground_event)
     ev_ground.terminal = True  # pyright: ignore
     ev_ground.direction = -1  # pyright: ignore
 
     # this one stops the sim when there's no water left (stream density close to air)
-    def mass_depleted_event(_, y, idx, tol=1e-3) -> float:
-        return y[idx["rho_f"]] - (rho_a + tol)
+    def mass_depleted_event(_, y, tol=1e-3) -> float:
+        idx = JetState.get_idx("rho_f")
+        return y[idx] - (rho_a + tol)
 
-    ev_mass: partial[float] = partial(mass_depleted_event, idx=idx)
+    ev_mass: partial[float] = partial(mass_depleted_event)
     ev_mass.terminal = True  # pyright: ignore
     ev_mass.direction = -1  # pyright: ignore
 
     # let the number magic begin!
-    sol = OdeResult()
-    rhs: partial[NDArray] = partial(
-        ode_right_hand_side, idx=idx, params=params, bypass=bypass
-    )
+    sol: OdeResult
     try:
         sol = solve_ivp(
-            rhs,
+            partial(ode_right_hand_side, params=params, bypass=bypass),
             s_span,
-            y0=state_vec,
+            y0=state_vec.to_array(),
             method=method,
             max_step=max_step,
             dense_output=True,
@@ -136,13 +134,12 @@ def simulate(
         else:
             raise e
 
-    return sol, idx
+    return sol
 
 
 def ode_right_hand_side(
     s: float,
     y: NDArray[np.floating],
-    idx: Dict[str, int],
     params: SimParams,
     bypass: Optional[Dict[str, float]] = None,
 ) -> NDArray[np.floating]:
@@ -157,121 +154,33 @@ def ode_right_hand_side(
 
     Args:
         s: current streamwise position [m]
-        y: current state vector (1D numpy array)
-        idx: dictionary mapping variable names to indices in the state vector
+        y: current state vector. Will be converted to and from JetState internally.
         params: given and computed-once parameters
         bypass: for debugging purposes, map of ODEs to disable
 
     Returns:
-        dyds: array of derivatives matching the shape and ordering of idx
+        dyds: vector of state derivatives
     """
-
-    assert len(y) == len(idx), "state vector and its index must have the same length"
-    assert np.all(np.isfinite(y)), "Variables must be finite numbers"
-
-    # return vector
-    dyds = np.zeros_like(y)
+    # state vector as dataclass for better readability and type safety
+    yc = JetState.from_array(y)
+    debug_printout(s, yc, params)
+    yc.assert_physically_plausible(params)
+    dyds = JetState()
 
     # helper vars for performance
     pi_2, pi_4 = np.pi / 2.0, np.pi / 4.0
-    TOL = 1e-6  # tolerance
-
-    # extract variables from state vector and clamp to lower bounds if appropriate
-    Uc = max(y[idx["Uc"]], TOL)
-    Ua = max(y[idx["Ua"]], TOL)
-    Uf = max(y[idx["Uf"]], TOL)
-    Dc = max(y[idx["Dc"]], TOL)
-    Da = max(y[idx["Da"]], TOL)
-    Df = max(y[idx["Df"]], TOL)
-    theta_a = y[idx["theta_a"]]
-    ND, Us, theta_s = (np.zeros(params.num_drop_classes) for _ in range(3))
-    for i in range(params.num_drop_classes):
-        ND[i] = max(y[idx[f"ND_{i}"]], TOL)
-        Us[i] = max(y[idx[f"Us_{i}"]], TOL)
-        theta_s[i] = y[idx[f"theta_s_{i}"]]
-
-    theta_f = y[idx["theta_f"]]
-    rho_f = max(y[idx["rho_f"]], rho_a)
-    x_pos = y[idx["x"]]
-    y_pos = y[idx["y"]]
+    TOL = 1e-6
 
     # "the local direction of the core is assumed to be equal to the fire stream"
-    theta_c: float = theta_f
-
-    th_c_deg, th_a_deg, th_f_deg = np.rad2deg([theta_c, theta_a, theta_f])
-    debug_str = ("post" if params._is_post_breakup else "pre") + " break-up"
-    debug_str += f"\n{s=:>6.3f} m\t{x_pos=:.3f} m\t{y_pos=:.3f} m\t{rho_f=:>6.3f} kg/m³"
-    debug_str += f"\nCore\t\t{Uc=:>6.3f} m/s \t{Dc=:>6.3f} m\ttheta_c={th_c_deg:>6.3f}°"
-    debug_str += f"\nAir\t\t{Ua=:>6.3f} m/s \t{Da=:>6.3f} m\ttheta_a={th_a_deg:>6.3f}°"
-    debug_str += (
-        f"\nStream\t\t{Uf=:>6.3f} m/s \t{Df=:>6.3f} m\ttheta_f={th_f_deg:>6.3f}°"
-    )
-    for i in range(params.num_drop_classes):
-        debug_str += f"\nDrop class {i} ({d_drop[i]} m)"
-        debug_str += f"\tUs={Us[i]:>6.3f} m/s\tND={ND[i]:.2g} /sec"
-        debug_str += f"\ttheta_s={np.rad2deg(theta_s[i]):>6.3f}°"
-
-    simlogger.debug(debug_str)
-
-    # --- PHYSICAL FEASIBILITY CHECKS --- #
-    # helps with debugging
-    # upper limits taken from Mathematice notebook, might need refinement
-
-    # Speeds [m/s]
-    U0: float = params.injection_speed
-    U_max: float = 2 * U0
-    assert 0 <= Uc <= U_max, f"core speed {Uc=} must be in range (0, {U_max})"
-    assert 0 <= Ua <= U_max, f"air phase speed {Ua=} must be in range (0, {U_max})"
-    assert 0 <= Uf <= U_max, f"stream speed {Uf=} must be in range (0, {U_max})"
-
-    # Diameters [m]
-    D0: float = params.nozzle_diameter
-    assert 0 <= Dc <= (Dc_max := 2 * D0), f"{Dc=} must be in range (0, {Dc_max})"
-    assert 0 <= Da <= (Da_max := 10.0), f"{Da=} must be in range (0, {Da_max})"
-    assert 0 <= Df <= (Df_max := 10.0), f"{Df=} must be in range (0, {Df_max})"
-
-    # Angles [rad, deg]
-    # NOTE: author clarified that all phase angles are relative to vertical axis.
-    # Only the injection angle theta_0 is relative to the horizontal.
-    th_low: float = 0.0  # upwards [deg]
-    th_high: float = 180.0  # downwards [deg]
-    assert (
-        th_low <= (th_a_deg := np.rad2deg(theta_a)) <= th_high
-    ), f"theta_a={th_a_deg}° must be in range {th_low, th_high}°"
-    assert (
-        th_low <= (th_f_deg := np.rad2deg(theta_f)) <= th_high
-    ), f"theta_f={th_f_deg}° must be in range {th_low, th_high}°"
-    for i in range(params.num_drop_classes):
-        assert (
-            th_low <= (th_f_deg := np.rad2deg(theta_s[i])) <= th_high
-        ), f"theta_s[{i}]={th_f_deg}° must be in range {th_low, th_high}°"
-
-    # Spray generation [drops/s]
-    ND_max_pre = [3e5, 1e6, 1e6, 1e6, 5e4]
-    ND_max_post = [1e8, 1e6, 5e5, 2.5e5, 1e5]
-    assert len(ND_max_post) == params.num_drop_classes
-    for i in range(params.num_drop_classes):
-        if not params._is_post_breakup:
-            pass
-            # assert (
-            #    0.0 <= ND[i] <= ND_max_pre[i]
-            # ), f"ND{i}={ND[i]:.2g} must be in range (0, {ND_max_pre[i]:.2g}) pre break-up"
-        else:
-            assert (
-                0.0 <= ND[i] <= ND_max_post[i]
-            ), f"ND{i}={ND[i]:.2g} must be in range (0, {ND_max_post[i]:.2g}) post break-up"
-
-    # Density [kg/m³]
-    assert (
-        rho_a - TOL <= rho_f <= rho_w + TOL
-    ), f"Stream density {rho_f=:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
+    theta_c = yc.theta_f
 
     # --- PRECOMPUTE SINES, COSINES, VECTORS, ... --- #
 
     # stream, core, air
-    sin_f, cos_f = np.sin(theta_f), np.cos(theta_f)
-    sin_c, cos_c = np.sin(theta_c), np.cos(theta_c)
-    sin_a, cos_a = np.sin(theta_a), np.cos(theta_a)
+    # FIX: 1e-9 added in Andres' version 25.09.25 06:58 CET
+    sin_f, cos_f = np.sin(yc.theta_f) + 1e-9, np.cos(yc.theta_f)
+    sin_c, cos_c = np.sin(theta_c) + 1e-9, np.cos(theta_c)
+    sin_a, cos_a = np.sin(yc.theta_a) + 1e-9, np.cos(yc.theta_a)
 
     # safe denominator for angle ODEs
     den_a: float = sin_a
@@ -283,44 +192,38 @@ def ode_right_hand_side(
     e_c: NDArray = np.array([sin_c, cos_c])  # core streamwise
     e_a: NDArray = np.array([sin_a, cos_a])  # air streamwise
 
-    def rotate90_cw(v: NDArray) -> NDArray:
-        """Returns 2D vector v rotated by 90° clockwise"""
-        x, y = v
-        return np.array([y, -x])
-
     n_c: NDArray = rotate90_cw(e_c)  # core radial (90° clockwise)
     assert np.isclose(np.dot(e_c, n_c), 0.0), "Core vectors must be orthogonal"
 
     # relative vector from core to air phase
-    U_ca: NDArray = (Ua * e_a) - (Uc * e_c)
+    U_ca: NDArray = (yc.Ua * e_a) - (yc.Uc * e_c)
 
     # --- MASS AND MOMENTUM TRANSFER --- #
+    # NOTE: Mathematica notebook used abs() for a number of calculations, article didn't
 
     # Eq. 15 mass flow surroundings -> jet (air entrainment)
-    m_sur2f: float = alpha * np.pi * rho_a * Ua * Df
+    m_sur2f = alpha * np.pi * rho_a * yc.Ua * yc.Df
     assert m_sur2f >= -1e-6, f"{m_sur2f=} must be >= 0 (air is entrained)"
 
     # Eq. 16 mass flow air -> surroundings
-    # NOTE: Mathematica notebook used abs(), article didn't
-    m_a2sur = abs(Ua * (sin_f * cos_a - sin_a * cos_f)) * Df * rho_a
+    m_a2sur = abs(yc.Ua * (sin_f * cos_a - sin_a * cos_f)) * yc.Df * rho_a
     assert m_a2sur >= 0.0, f"{m_a2sur=} must be >= 0 (air leaves the stream)"
 
     # Eq. 18 momentum exchange air -> surroundings
-    f_a2sur: float = m_a2sur * Ua * np.cos(theta_f - theta_a)
-    f_ra2sur: float = m_a2sur * Ua * abs(np.sin(theta_f - theta_a))
+    f_a2sur = m_a2sur * yc.Ua * np.cos(yc.theta_f - yc.theta_a)
+    f_ra2sur = m_a2sur * yc.Ua * abs(np.sin(yc.theta_f - yc.theta_a))
     assert f_a2sur >= 0.0, f"{f_a2sur=} (momentum air->spray streamwise) must be >= 0"
     assert f_ra2sur >= 0.0, f"{f_ra2sur=} (momentum air->spray radial) must be >= 0"
 
     # Eq. 20 drag momentum
-    # TODO: abs() could be necessary here as well
-    f_c2a_common: float = pi_2 * F * Dc * np.linalg.norm(U_ca)
+    f_c2a_common = pi_2 * F * yc.Dc * np.linalg.norm(U_ca)
     f_c2a: float = f_c2a_common * abs(np.dot(U_ca, e_c))
     f_rc2a: float = sin_a * f_c2a_common * abs(np.dot(U_ca, n_c))
     assert f_c2a >= 0.0, f"{f_c2a=} (momentum core->air streamwise) must be >= 0"
     assert f_rc2a >= 0.0, f"{f_rc2a=} (momentum core->air radial) must be >= 0"
 
     # Eq. 22 liquid surface break-up efficiency factor
-    Delta: float = Df  # radial integral scale of the jet, assumed to be core diameter
+    Delta = yc.Df  # radial integral scale of the jet, assumed to be core diameter
     epsilon: float = 0.012 * (s / (Delta * np.sqrt(params.weber)))
 
     # mass and momentum transfer vars for each spray class
@@ -330,7 +233,7 @@ def ode_right_hand_side(
     )
     for i in range(params.num_drop_classes):
 
-        sin_s[i], cos_s[i] = np.sin(theta_s[i]), np.cos(theta_s[i])
+        sin_s[i], cos_s[i] = np.sin(yc.theta_s[i]), np.cos(yc.theta_s[i])
         # safeguard against div-by-zero if sin(theta_s[i]) is used in denominator
         den_s[i] = sin_s[i]
         if abs(den_s[i]) < TOL:
@@ -345,7 +248,7 @@ def ode_right_hand_side(
         assert np.isclose(np.dot(e_s, n_s), 0.0), f"Spray vectors must be orthogonal"
 
         # relative velocity spray -> air
-        U_sa: NDArray = (Ua * e_a) - (Us[i] * e_s)
+        U_sa: NDArray = (yc.Ua * e_a) - (yc.Us[i] * e_s)
 
         # Eq. 17 mass flow spray -> surroundings per unit s [kg/(m*s)]
         # NOTE: Typos in research article, confirmed by the author.
@@ -353,19 +256,19 @@ def ode_right_hand_side(
         # (Ds instead of Df).
         m_s2sur[i] = (
             (2.0 / 3.0)
-            * ND[i]
+            * yc.ND[i]
             * rho_w
             * (d_drop[i] ** 3)
-            * (np.pi / Df)
-            * abs(np.sin(theta_s[i] - theta_f))
+            * (np.pi / yc.Df)
+            * abs(np.sin(yc.theta_s[i] - yc.theta_f))
         )
         assert (
             m_s2sur[i] >= 0.0
         ), f"{m_s2sur[i]=} kg/(m*s) (mass spray->surroungins) must be >= 0"
 
         # Eq. 19 momentum exchange spray -> surroundings
-        f_s2sur[i] = m_s2sur[i] * Us[i] * abs(np.cos(theta_s[i] - theta_f))
-        f_rs2sur[i] = m_s2sur[i] * Us[i] * abs(np.sin(theta_s[i] - theta_f))
+        f_s2sur[i] = m_s2sur[i] * yc.Us[i] * abs(np.cos(yc.theta_s[i] - yc.theta_f))
+        f_rs2sur[i] = m_s2sur[i] * yc.Us[i] * abs(np.sin(yc.theta_s[i] - yc.theta_f))
         assert (
             f_s2sur[i] >= 0
         ), f"{f_s2sur[i]=} N/m (momentum spray->surroundings streamwise) must be >= 0"
@@ -378,17 +281,17 @@ def ode_right_hand_side(
             m_c2s[i] = f_c2s[i] = f_rc2s[i] = 0.0
         else:
             # Eq. 23 mass-averaged radial velocity of drops relative to core surface
-            u_rc2s[i] = 0.05 * Us[i]
+            u_rc2s[i] = 0.05 * yc.Us[i]
 
             # Eq. 21 radial mass flow core -> spray
-            m_c2s[i] = epsilon * u_rc2s[i] * np.pi * rho_w * Dc
+            m_c2s[i] = epsilon * u_rc2s[i] * np.pi * rho_w * yc.Dc
             assert (
                 m_c2s[i] >= -TOL
             ), f"{m_c2s[i]=} kg/(m*s) (mass core->spray) must be >= 0"
 
             # Eq. 24 momentum transfer core -> spray
-            f_c2s[i] = m_c2s[i] * Uc * abs(np.cos(theta_s[i] - theta_c))
-            f_rc2s[i] = m_c2s[i] * Uc * abs(np.sin(theta_s[i] - theta_c))
+            f_c2s[i] = m_c2s[i] * yc.Uc * abs(np.cos(yc.theta_s[i] - theta_c))
+            f_rc2s[i] = m_c2s[i] * yc.Uc * abs(np.sin(yc.theta_s[i] - theta_c))
             assert (
                 f_c2s[i] >= 0
             ), f"{f_c2s[i]=} N/m (momentum core->spray streamwise) must be >= 0"
@@ -397,14 +300,14 @@ def ode_right_hand_side(
             ), f"{f_rc2s[i]=} N/m (momentum core->spray radial) must be >= 0"
 
         # Eq. 25 drag force between spray and air
-        Re_d: float = get_reynolds_number(Us[i], d_drop[i])
-        C_d: float = get_drag_coefficient(Re_d)
+        Re_d: float = get_reynolds_number(yc.Us[i], d_drop[i])
+        C_d: float = get_drag_coefficient(Re_d)  # FIX: scalable by 0.01 for debugging
         f_s2a_common: float = (
             pi_4
             * rho_a
             * C_d
             * (d_drop[i] ** 2)
-            * (ND[i] / Us[i])
+            * (yc.ND[i] / yc.Us[i])
             * np.linalg.norm(U_sa)
         )
         f_s2a[i] = f_s2a_common * abs(np.dot(U_sa, e_s))
@@ -418,7 +321,7 @@ def ode_right_hand_side(
 
     m_c2s_total: float = np.sum(m_c2s)  # eq 21
     assert m_c2s_total <= (
-        m_in := pi_4 * rho_w * (D0**2) * U0
+        m_in := pi_4 * rho_w * (params.nozzle_diameter**2) * params.injection_speed
     ), f"Mass transfer core->spray {m_c2s_total} must be <= intake {m_in} kg/(m*s)"
     m_s2sur_total: float = np.sum(m_s2sur)  # eq 17
     f_s2a_total: float = np.sum(f_s2a)  # eq 25 top
@@ -431,22 +334,20 @@ def ode_right_hand_side(
 
     # core phase only exists until s_brk
     if params._is_post_breakup:
-        dyds[idx["Uc"]] = 0.0
-        dyds[idx["Dc"]] = 0.0
+        dyds.Uc = np.float32(0.0)
+        dyds.Dc = np.float32(0.0)
 
     elif s < params.s_brk:
 
         # Eq 1, 2 core phass mass and momentum conservation
-        dyds[idx["Uc"]] = -(np.pi * Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
-            np.pi * Dc**2 * Uc * rho_w
+        dyds.Uc = -(np.pi * yc.Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
+            np.pi * yc.Dc**2 * yc.Uc * rho_w
         )
-        assert (
-            dyds[idx["Uc"]] <= TOL
-        ), f"{dyds[idx["Uc"]]=:.3f}m/s² Uc must not accelerate"
+        assert dyds.Uc <= TOL, f"{dyds.Uc=:.3f}m/s² Uc can not accelerate"
 
-        dyds[idx["Dc"]] = (
-            np.pi * Dc**2 * g * rho_w * cos_c - 4 * Uc * m_c2s_total + 4 * f_c2a
-        ) / (2 * np.pi * Dc * Uc**2 * rho_w)
+        dyds.Dc = (
+            np.pi * yc.Dc**2 * g * rho_w * cos_c - 4 * yc.Uc * m_c2s_total + 4 * f_c2a
+        ) / (2 * np.pi * yc.Dc * yc.Uc**2 * rho_w)
 
     else:
         simlogger.debug("--- CORE PHASE BREAKUP ---")
@@ -454,127 +355,121 @@ def ode_right_hand_side(
 
         # Create droplets at breakup point
         for i in range(params.num_drop_classes):
-            ND[i] = p_d[i] * (3.0 / 2.0) * (Uc * Dc**2) / (d_drop[i] ** 3)
-            dyds[idx[f"ND_{i}"]] += ND[i]
+            yc.ND[i] = p_d[i] * (3.0 / 2.0) * (yc.Uc * yc.Dc**2) / (d_drop[i] ** 3)
+            dyds.ND[i] += yc.ND[i]
 
     # Eq 3, 4, 5 air phase mass, streamwise momentum, radial momentum conservation
     # can temporarily increase (Mathematice plots show "bumps")
-    dyds[idx["Ua"]] = (
+    dyds.Ua = (
         4
-        * (Ua * m_a2sur - Ua * m_sur2f - f_a2sur + f_c2a + f_s2a_total)
-        / (np.pi * Da**2 * Ua * rho_a)
+        * (yc.Ua * m_a2sur - yc.Ua * m_sur2f - f_a2sur + f_c2a + f_s2a_total)
+        / (np.pi * yc.Da**2 * yc.Ua * rho_a)
     )
 
-    dyds[idx["Da"]] = (
+    dyds.Da = (
         -2
-        * (2 * Ua * m_a2sur - 2 * Ua * m_sur2f - f_a2sur + f_c2a + f_s2a_total)
-        / (np.pi * Da * Ua**2 * rho_a)
+        * (2 * yc.Ua * m_a2sur - 2 * yc.Ua * m_sur2f - f_a2sur + f_c2a + f_s2a_total)
+        / (np.pi * yc.Da * yc.Ua**2 * rho_a)
     )
-    assert dyds[idx["Da"]] >= -TOL, f"{dyds[idx["Da"]]=} Air diameter can't decrease"
+    assert dyds.Da >= -TOL, f"{dyds.Da=} Air diameter can't decrease"
 
-    dyds[idx["theta_a"]] = (
-        4 * (f_ra2sur - f_rc2a - f_rs2a_total) / (np.pi * Da**2 * Ua**2 * rho_a * den_a)
+    # FIX: My version on top, Andres' from 25.09.25 6:58 CET below
+    # dyds[idx["theta_a"]] = (
+    #    4 * (f_ra2sur - f_rc2a - f_rs2a_total) / (np.pi * Da**2 * Ua**2 * rho_a * den_a)
+    # )
+    dyds.theta_a = (
+        -1
+        * (
+            np.pi * yc.Df**2 * g * rho_a * sin_f
+            - np.pi * yc.Df**2 * g * yc.rho_f * sin_f
+            - 4 * f_ra2sur
+            - 4 * f_rs2sur_total
+        )
+        / (np.pi * yc.Df**2 * yc.Uf**2 * yc.rho_f * sin_f)
     )
 
     # Eq 6, 7, 8 spray phase
     for i in range(params.num_drop_classes):
 
-        dyds[idx[f"ND_{i}"]] = (
-            6 * (m_c2s[i] - m_s2sur[i]) / (np.pi * (d_drop[i] ** 3) * rho_w)
-        )
+        dyds.ND[i] = 6 * (m_c2s[i] - m_s2sur[i]) / (np.pi * (d_drop[i] ** 3) * rho_w)
 
-        dyds[idx[f"Us_{i}"]] = -(
-            np.pi * ND[i] * (d_drop[i] ** 3) * g * rho_w * cos_c
-            + 6 * (Us[i] ** 2) * m_c2s[i]
-            - 6 * (Us[i] ** 2) * m_s2sur[i]
-            - 6 * Us[i] * f_c2s[i]
-            + 6 * Us[i] * f_s2a[i]
-            + 6 * Us[i] * f_s2sur[i]
-        ) / (np.pi * ND[i] * Us[i] * d_drop[i] ** 3 * rho_w)
+        dyds.Us[i] = -(
+            np.pi * yc.ND[i] * (d_drop[i] ** 3) * g * rho_w * cos_c
+            + 6 * (yc.Us[i] ** 2) * m_c2s[i]
+            - 6 * (yc.Us[i] ** 2) * m_s2sur[i]
+            - 6 * yc.Us[i] * f_c2s[i]
+            + 6 * yc.Us[i] * f_s2a[i]
+            + 6 * yc.Us[i] * f_s2sur[i]
+        ) / (np.pi * yc.ND[i] * yc.Us[i] * d_drop[i] ** 3 * rho_w)
 
-        dyds[idx[f"theta_s_{i}"]] = (
-            np.pi * ND[i] * (d_drop[i] ** 3) * g * rho_w * sin_s[i]
-            - 6 * Us[i] * f_rc2s[i]
-            + 6 * Us[i] * f_rs2a[i]
-            + 6 * Us[i] * f_rs2sur[i]
-        ) / (np.pi * ND[i] * (Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
+        dyds.theta_s[i] = (
+            np.pi * yc.ND[i] * (d_drop[i] ** 3) * g * rho_w * sin_s[i]
+            - 6 * yc.Us[i] * f_rc2s[i]
+            + 6 * yc.Us[i] * f_rs2a[i]
+            + 6 * yc.Us[i] * f_rs2sur[i]
+        ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
 
     # Eq 9, 10, 11, 12 stream phase
-    dyds[idx["Uf"]] = (
-        np.pi * Df**2 * g * rho_a * cos_f
-        - np.pi * Df**2 * g * rho_f * cos_f
-        + 4 * Uf * m_a2sur * rho_f
-        + 4 * Uf * m_s2sur_total * rho_f
-        - 4 * Uf * m_sur2f * rho_f
+    dyds.Uf = (
+        np.pi * yc.Df**2 * g * rho_a * cos_f
+        - np.pi * yc.Df**2 * g * yc.rho_f * cos_f
+        + 4 * yc.Uf * m_a2sur * yc.rho_f
+        + 4 * yc.Uf * m_s2sur_total * yc.rho_f
+        - 4 * yc.Uf * m_sur2f * yc.rho_f
         - 4 * f_a2sur
         - 4 * f_s2sur_total
-    ) / (np.pi * Df**2 * Uf * rho_f**2)
+    ) / (np.pi * yc.Df**2 * yc.Uf * yc.rho_f**2)
 
-    dyds[idx["Df"]] = -(
-        np.pi * Df**2 * g * rho_a**2 * rho_w * cos_f
-        - np.pi * Df**2 * g * rho_a * rho_f * rho_w * cos_f
-        + 4 * Uf * m_a2sur * rho_a * rho_f * rho_w
-        + 4 * Uf * m_a2sur * rho_f**2 * rho_w
-        + 4 * Uf * m_s2sur_total * rho_a * rho_f**2
-        + 4 * Uf * m_s2sur_total * rho_a * rho_f * rho_w
-        - 4 * Uf * m_sur2f * rho_a * rho_f * rho_w
-        - 4 * Uf * m_sur2f * rho_f**2 * rho_w
+    dyds.Df = -(
+        np.pi * yc.Df**2 * g * rho_a**2 * rho_w * cos_f
+        - np.pi * yc.Df**2 * g * rho_a * yc.rho_f * rho_w * cos_f
+        + 4 * yc.Uf * m_a2sur * rho_a * yc.rho_f * rho_w
+        + 4 * yc.Uf * m_a2sur * yc.rho_f**2 * rho_w
+        + 4 * yc.Uf * m_s2sur_total * rho_a * yc.rho_f**2
+        + 4 * yc.Uf * m_s2sur_total * rho_a * yc.rho_f * rho_w
+        - 4 * yc.Uf * m_sur2f * rho_a * yc.rho_f * rho_w
+        - 4 * yc.Uf * m_sur2f * yc.rho_f**2 * rho_w
         - 4 * f_a2sur * rho_a * rho_w
         - 4 * f_s2sur_total * rho_a * rho_w
-    ) / (2 * np.pi * Df * Uf**2 * rho_a * rho_f**2 * rho_w)
-    assert dyds[idx["Df"]] >= -TOL, f"Stream diameter can't decrease"
+    ) / (2 * np.pi * yc.Df * yc.Uf**2 * rho_a * yc.rho_f**2 * rho_w)
+    assert dyds.Df >= -TOL, f"{dyds.Df=} m Stream diameter can't decrease"
 
-    dyds[idx["theta_f"]] = -(
-        np.pi * Df**2 * g * rho_a * sin_f
-        - np.pi * Df**2 * g * rho_f * sin_f
+    dyds.theta_f = -(
+        np.pi * yc.Df**2 * g * rho_a * sin_f
+        - np.pi * yc.Df**2 * g * yc.rho_f * sin_f
         - 4 * f_ra2sur
         - 4 * f_rs2sur_total
-    ) / (np.pi * Df**2 * Uf**2 * rho_f * sin_f)
+    ) / (np.pi * yc.Df**2 * yc.Uf**2 * yc.rho_f * sin_f)
 
-    dyds[idx["rho_f"]] = (
+    dyds.rho_f = (
         -4
         * (
-            m_a2sur * rho_a * rho_w
-            - m_a2sur * rho_f * rho_w
-            - m_s2sur_total * rho_a * rho_f
-            + m_s2sur_total * rho_a * rho_w
-            - m_sur2f * rho_a * rho_w
-            + m_sur2f * rho_f * rho_w
+            m_a2sur * rho_w * (rho_a - yc.rho_f)
+            + m_s2sur_total * rho_a * (rho_w - yc.rho_f)
+            + m_sur2f * rho_w * (yc.rho_f - rho_a)
         )
-        / (np.pi * Df**2 * Uf * rho_a * rho_w)
+        / (np.pi * yc.Df**2 * yc.Uf * rho_a * rho_w)
     )
-    dyds[idx["rho_f"]] = (
-        -4
-        * (
-            m_a2sur * rho_w * (rho_a - rho_f)
-            + m_s2sur_total * rho_a * (rho_w - rho_f)
-            + m_sur2f * rho_w * (rho_f - rho_a)
-        )
-        / (np.pi * Df**2 * Uf * rho_a * rho_w)
-    )
-    assert (
-        dyds[idx["rho_f"]] <= TOL
-    ), f"{dyds[idx["rho_f"]]=:g} kg/m³/s Stream can't gain density!"
+    assert dyds.rho_f <= TOL, f"{dyds.rho_f=:g} kg/m³/s Stream can't gain density"
 
     # Eq. 13 & 14 Cartesian coordinates of the trajectory
     # NOTE: Typo in the original article, cos and sin must be swapped since theta_f is
     # measured relative to vertical axis.
-    dyds[idx["x"]] = sin_f
-    assert dyds[idx["x"]] >= 0.0, f"{dyds[idx["x"]]=} Stream can't move backwards"
-
-    dyds[idx["y"]] = cos_f
+    dyds.x = sin_f
+    dyds.y = cos_f
+    assert dyds.x >= 0, f"Stream can't move backwards"
     if s < params.s_brk:
-        assert (
-            dyds[idx["y"]] >= 0.0
-        ), f"{dyds[idx["y"]]=} Stream can't fall before core break-up"
+        assert dyds.y >= 0.0, f"{dyds.y=} Stream can't fall before core break-up"
 
     # DEBUG TOOL: Bypass potentially erroneous equations by overwriting their results
     if bypass:
-        for name, value in bypass.items():
-            dyds[idx[name]] = value
+        pass
+        # TODO: Re-implement
+        # for name, value in bypass.items():
+        #    dyds[idx[name]] = value
 
     # On to the next simulation step!
-    return dyds
+    return dyds.to_array()
 
 
 # ---------------------------------------------------------------------------
@@ -582,113 +477,45 @@ def ode_right_hand_side(
 # ---------------------------------------------------------------------------
 
 
-def build_state_idx(n_classes: int) -> Dict[str, int]:
-    """
-    Builds a dictionary, mapping state variable names to their corresponding index in
-    the state vector, following a structured layout. Helps to use state vector consistenly.
+def debug_printout(s: float, state: JetState, params: SimParams) -> None:
+    """ """
+    theta_c = state.theta_f
 
-    Args:
-        n_classes: number of droplet classes
+    th_c_deg, th_a_deg, th_f_deg = np.rad2deg([theta_c, state.theta_a, state.theta_f])
+    debug_str = ("post" if params._is_post_breakup else "pre") + " break-up"
 
-    Returns:
-        idx (dict): mapping from variable names to indices
-    """
+    debug_str += f"\n{s=:>6.3f} m"
+    debug_str += f"\t x={state.x:>6.3f} m"
+    debug_str += f"\t y={state.y:>6.3f} m"
+    debug_str += f"\trho_f={state.rho_f:>6.3f} kg/m³"
 
-    assert n_classes > 0
-    counter = np.uint8(0)
-    idx: dict = {}
+    debug_str += f"\nCore"
+    debug_str += f"\t\tUc={state.Uc:>6.3f} m/s "
+    debug_str += f"\tDc={state.Dc:>6.3f} m"
+    debug_str += f"\ttheta_c={th_c_deg:>6.3f}°"
 
-    # Add these variables to the state vector index
-    var_names = [
-        "Uc",  # core-phase velocity [m/s]
-        "Dc",  # core-phase diameter [m]
-        "Ua",  # air phase velocity [m/s]
-        "Da",  # air phase diameter [m]
-        "theta_a",  # air phase angle [rad]
-        "Uf",  # stream velocity [m/s]
-        "Df",  # stream diameter [m]
-        "theta_f",  # stream angle [rad]
-        "rho_f",  # stream density [kg/m³]
-        "x",  # x-position [m]
-        "y",  # y-position [m]
-    ]
-    for name in var_names:
-        idx[name] = counter
-        counter += 1
+    debug_str += f"\nAir"
+    debug_str += f"\t\tUa={state.Ua:>6.3f} m/s"
+    debug_str += f"\tDa={state.Da:>6.3f} m "
+    debug_str += f"\ttheta_a={th_a_deg:>6.3f}°"
 
-    # Add one set of these for each droplet class
-    var_names_spray: list = [
-        "ND",  # Number of drops [drops/s]
-        "Us",  # Spray phase velocity [m/s]
-        "theta_s",  # Droplet angle [rad]
-    ]
-    for i_class in range(n_classes):
-        for name in var_names_spray:
-            idx[f"{name}_{i_class}"] = counter
-            counter += 1
+    debug_str += f"\nStream"
+    debug_str += f"\t\tUf={state.Uf:>6.3f} m/s "
+    debug_str += f"\tDf={state.Df:>6.3f} m "
+    debug_str += f"\ttheta_f={th_f_deg:>6.3f}°"
 
-    return idx
+    for i in range(params.num_drop_classes):
+        debug_str += f"\nDrop class {i} ({d_drop[i]} m)"
+        debug_str += f"\tUs={state.Us[i]:>6.3f} m/s"
+        debug_str += f"\tND={state.ND[i]:.2g} /sec"
+        debug_str += f"\ttheta_s={np.rad2deg(state.theta_s[i]):>6.3f}°"
 
-
-def assert_physically_plausible(y: NDArray, idx: Dict[str, int]) -> None:
-
+    debug_str += "\n"
+    simlogger.debug(debug_str)
     return
 
 
-def get_initial_state_vector(
-    injection_speed: float,
-    injection_angle_deg: float,
-    nozzle_diameter: float,
-    idx: Dict[str, int],
-) -> NDArray[np.floating]:
-    """
-    Prepare the initial state vector of the fire stream (see appendix of paper).
-
-    Args:
-        injection_speed: U_0 [m/s]
-        injection_angle_deg: theta_0 (relative to horizon) [deg]
-        nozzle_diameter: D_0 [m]
-        idx: Mapping of variable names to indices in state vector
-
-    Returns:
-        y0: (N,) Initial state vector
-    """
-
-    # TODO: Check if notebook has notable differences
-
-    injection_angle_rad: float = np.deg2rad(injection_angle_deg)
-    # NOTE: Author confirmed that only the injection angle is measured relative to horizon.
-    # All phase angles are measured relative to vertical axis.
-    injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
-
-    # initialize state vector with all zeros
-    state_vec: NDArray = np.zeros(len(idx), dtype=np.float32)
-
-    # position
-    state_vec[idx["x"]] = 0.0
-    state_vec[idx["y"]] = 0.0
-
-    # Eq 31-33 core phase
-    state_vec[idx["Uc"]] = injection_speed
-    state_vec[idx["Dc"]] = nozzle_diameter
-
-    # Eq 34-36 spray phase (one set per droplet class)
-    for i in range(len(d_drop)):
-        state_vec[idx[f"ND_{i}"]] = 1e-12
-        state_vec[idx[f"Us_{i}"]] = injection_speed
-        state_vec[idx[f"theta_s_{i}"]] = injection_angle_rad
-
-    # Eq 38-40 air phase
-    # NOTE: -1e-6 from notebook, not paper
-    state_vec[idx["Ua"]] = injection_speed - 1e-6
-    # NOTE: not 0.0 as in paper to prevent singularity in dyds[Ua] calculation
-    state_vec[idx["Da"]] = nozzle_diameter
-    state_vec[idx["theta_a"]] = injection_angle_rad
-
-    # Eq 41-44 fire stream phase
-    state_vec[idx["Uf"]] = injection_speed
-    state_vec[idx["Df"]] = nozzle_diameter
-    state_vec[idx["theta_f"]] = injection_angle_rad
-    state_vec[idx["rho_f"]] = rho_w
-
-    return state_vec
+def rotate90_cw(v: NDArray) -> NDArray:
+    """Returns 2D vector v rotated by 90° clockwise"""
+    x, y = v
+    return np.array([y, -x])
