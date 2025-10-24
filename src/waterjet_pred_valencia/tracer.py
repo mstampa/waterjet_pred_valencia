@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 import numpy as np
+from pandas import DataFrame
 
 
 @dataclass
@@ -19,7 +20,7 @@ class Tracer:
     Lightweight tracer to record all variables within ode_right_hand_side() per
     simulation step for debugging.
 
-    Featuers:
+    Features:
       - s_stride: minimum spacing (in meters) between recorded rows (e.g., 0.05 for 5 cm).
       - decimals: round all numeric outputs to this many decimal places in-memory.
       - vector column naming: '<name>[i]' for i-th element.
@@ -93,7 +94,7 @@ class Tracer:
 
         self.rows.append(TraceRowWide(data=row))
 
-    def to_wide_dataframe(self):
+    def to_wide_dataframe(self) -> DataFrame:
         """
         Return a wide pandas DataFrame: one row per logged s; columns include scalars
         and vector elements.
@@ -113,9 +114,11 @@ class Tracer:
         all_keys = set()
         for r in self.rows:
             all_keys.update(r.data.keys())
+
         # Stable column order: s first, then others sorted
         all_keys.discard("s")
         columns = ["s"] + sorted(all_keys)
+
         # Build records
         records = []
         for r in self.rows:
@@ -123,7 +126,8 @@ class Tracer:
             for k, v in r.data.items():
                 rec[k] = v
             records.append(rec)
-        return pd.DataFrame.from_records(records, columns=columns)
+
+        return DataFrame.from_records(records, columns=columns)
 
     def to_csv(self, path: str):
         """Write wide CSV with numeric formatting."""

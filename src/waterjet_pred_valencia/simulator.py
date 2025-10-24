@@ -97,7 +97,7 @@ def simulate(
         simlogger.warning(f"Active bypasses: {bypass}")
 
     # construct initial state vector
-    state_vec = JetState.get_initial(
+    initial_state_vec = JetState.get_initial(
         injection_speed, injection_angle_deg, nozzle_diameter
     )
 
@@ -125,7 +125,7 @@ def simulate(
         sol = solve_ivp(
             partial(ode_right_hand_side, params=params, bypass=bypass, tracer=tracer),
             s_span,
-            y0=state_vec.to_array(),
+            y0=initial_state_vec.to_array(),
             method=method,
             max_step=max_step,
             dense_output=True,
