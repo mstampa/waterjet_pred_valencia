@@ -18,6 +18,7 @@ Parameter "max_step" can be adjusted to trade accuracy for performance.
 
 from .jet_state import DTYPE, JetState
 from .parameters import *
+from .tracer import Tracer
 
 from functools import partial
 import logging
@@ -40,6 +41,7 @@ def simulate(
     method: str = "Radau",
     debug: bool = False,
     bypass: Optional[Dict[str, float]] = None,
+    tracer: Optional[Tracer] = None,
 ) -> OdeResult:
     """
     Simulates a fire stream with the given injection parameters.
@@ -51,8 +53,11 @@ def simulate(
         s_span: (start, end) in streamwise domain s [m]
         max_step: Max integration step size [m]
         method: See documentation for scipy.integrate.solve_ivp
+
+    Optional args for debugging:
         debug: enable debug mode (with console printouts and auto-activation of PDB)
-        bypass: for debugging purposes, map of ODEs to disable
+        bypass: map of derivatives to override with provided values
+        tracer: records variables (not only state vector) per simulation step
 
     Returns:
         sol (OdeResult): the solution
@@ -118,7 +123,7 @@ def simulate(
     sol: OdeResult
     try:
         sol = solve_ivp(
-            partial(ode_right_hand_side, params=params, bypass=bypass),
+            partial(ode_right_hand_side, params=params, bypass=bypass, tracer=tracer),
             s_span,
             y0=state_vec.to_array(),
             method=method,
@@ -144,6 +149,7 @@ def ode_right_hand_side(
     y: NDArray[np.floating],
     params: SimParams,
     bypass: Optional[Dict[str, float]] = None,
+    tracer: Optional[Tracer] = None,
 ) -> NDArray[np.floating]:
     """
     Encapsulates the right-hand side of the ODE system for the fire stream model. I.e.,
@@ -158,7 +164,10 @@ def ode_right_hand_side(
         s: current streamwise position [m]
         y: current state vector (internally converted to dataclass 'JetState').
         params: given and computed-once parameters
-        bypass: for debugging purposes, map of ODEs to disable
+
+    Optional args for debugging:
+        bypass: map of derivatives to override with provided values
+        tracer: records variables (not only state vector) per simulation step
 
     Returns:
         NDArray: derivatives of the state vector at s
@@ -484,6 +493,51 @@ def ode_right_hand_side(
                 raise KeyError(
                     f"Can't apply bypass: {name} is not a member of {type(dyds).__name__}"
                 )
+    if tracer is not None:
+        # Collect key scalars (angles shown in deg for readability)
+        scalars = {
+            "theta_f_deg": np.rad2deg(yc.theta_f),
+            "theta_a_deg": np.rad2deg(yc.theta_a),
+            "Uc": yc.Uc,
+            "Ua": yc.Ua,
+            "Uf": yc.Uf,
+            "Dc": yc.Dc,
+            "Da": yc.Da,
+            "Df": yc.Df,
+            "rho_f": yc.rho_f,
+            "m_sur2f": m_sur2f,
+            "m_a2sur": m_a2sur,
+            "f_a2sur": f_a2sur,
+            "f_ra2sur": f_ra2sur,
+            "f_c2a": f_c2a,
+            "f_rc2a": f_rc2a,
+            "f_s2a_total": f_s2a_total,
+            "f_rs2a_total": f_rs2a_total,
+            "f_s2sur_total": f_s2sur_total,
+            "f_rs2sur_total": f_rs2sur_total,
+            "dyds_Uf": float(dyds.Uf),
+            "dyds_theta_f": float(dyds.theta_f),
+            "dyds_Ua": float(dyds.Ua),
+            "dyds_theta_a": float(dyds.theta_a),
+            "dyds_Df": float(dyds.Df),
+            "dyds_Da": float(dyds.Da),
+        }
+
+        # Per spray class vectors
+        vectors = {
+            "theta_s_deg": np.rad2deg(yc.theta_s),
+            "Us": yc.Us,
+            "ND": yc.ND,
+            "m_c2s": m_c2s,
+            "m_s2sur": m_s2sur,
+            "f_c2s": f_c2s,
+            "f_rc2s": f_rc2s,
+            "f_s2a": f_s2a,
+            "f_rs2a": f_rs2a,
+            "f_s2sur": f_s2sur,
+            "f_rs2sur": f_rs2sur,
+        }
+        tracer.snapshot(s=s, scalars=scalars, vectors=vectors)
 
     # On to the next simulation step!
     return dyds.to_array()

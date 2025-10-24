@@ -4,8 +4,8 @@
 Command-line interface for testing, demonstration etc.
 """
 
-from .simulator import simulate
 from .plotting import plot_solution
+from .simulator import simulate
 
 from argparse import ArgumentParser, Namespace
 import logging
@@ -36,21 +36,44 @@ def run_simulation(args: Namespace) -> None:
         argparse.Namespace: Parsed CLI arguments
     """
 
+    bypass, tracer = None, None
+    if args.debug:
+
+        # manual override for dyds components
+        # bypass = {"Uc": -0.01, "theta_s": 0.001}
+
+        # records all variables (not only the state vecotr) per sim step
+        from .tracer import Tracer
+
+        tracer = Tracer()
+
     clilogger.info("Starting simulation...")
     start_time = time()
-    sol, idx = simulate(
-        args.speed,
-        args.angle,
-        args.nozzle,
-        s_span=(0.0, args.max_s),
-        debug=args.debug,
-        # NOTE: bypass argument only used for debugging
-        # bypass={"Uc": -0.01, "theta_s": 0.001},
-    )
-    clilogger.info(f"Simulation finished in {time() - start_time:.4f}s.")
 
-    clilogger.info(f"Plotting results in {args.plotpath}...")
-    plot_solution(sol, idx, args.plotpath)
+    try:
+        sol, idx = simulate(
+            args.speed,
+            args.angle,
+            args.nozzle,
+            s_span=(0.0, args.max_s),
+            debug=args.debug,
+            # NOTE: Use the following arguments for debugging
+            bypass=bypass,
+            tracer=tracer,
+        )
+
+        clilogger.info(f"Plotting results in {args.plotpath}...")
+        plot_solution(sol, idx, args.plotpath)
+
+    except Exception as e:
+        clilogger.error(f"An error occured: {e}")
+    finally:
+        clilogger.info(f"Execution time: {time() - start_time:.4f}s.")
+
+        if tracer is not None:
+            path_trace = Path.cwd() / "trace.csv"
+            clilogger.info(f"Saving trace to {str(path_trace)}")
+            tracer.to_csv(str(path_trace))
 
     clilogger.info(f"All done!")
     return

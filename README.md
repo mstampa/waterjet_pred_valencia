@@ -42,8 +42,9 @@ Key dependencies of this package are:
 
 Developers wishing to contribute also require:
 
+* [pandas](https://pandas.pydata.org/) for tracer output
 * [pytest](https://pytest.org) for unit tests
-* [SymPy](https://sympy.org) for the `rearrange.py` helper script.
+* [SymPy](https://sympy.org) for the `rearrange.py` helper script
 
 ### Installation
 

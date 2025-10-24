@@ -1,6 +1,7 @@
 
-# Plots
+# Plots and traces
 *.html
+*.csv
 
 # Python
 *.py[codz]
