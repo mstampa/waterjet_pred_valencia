@@ -1,6 +1,6 @@
-# Fire stream trajectory model — Valencia et al.
+# Fire stream trajectory model — Valencia et al
 
-**NOTE:** 
+**NOTE:**
 Work in progress and currently not functional!
 There seem to be errors in the ODE system.
 Example plots were generated with some of the computations bypassed.
@@ -31,9 +31,11 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 
 ![Example plots](doc/example_plots.png)
 
-## Prerequisites
+## Getting started
 
-Key dependencies this package are:
+### Prerequisites
+
+Key dependencies of this package are:
 
 * [SciPy](https://scipy.org) for solving the ODE
 * [bokeh](https://bokeh.org) for plotting
@@ -43,32 +45,40 @@ Developers wishing to contribute also require:
 * [pytest](https://pytest.org) for unit tests
 * [SymPy](https://sympy.org) for the `rearrange.py` helper script.
 
-## Usage
+### Installation
+
+To install the package into your local Python environment, do:
+
+```bash
+cd <project root>
+pip install -e .  # -e = editable
+```
+
+### Usage
 
 User has to supply:
 
-* theta_0: injection angle above the horizon in range (0°, 90°)
-* U_0: injection speed [m/s]
-* s_end: maximum value for s, aka the simulation limit [m]
+* `theta_0`: injection angle above the horizon, 0–90°
+* `U_0`: injection speed [m/s]
+* `s_end`: maximum value for s, i.e., the simulation limit [m]
 
-The core logic is designed to be easily importable into other projects.
+The core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py)
+is designed to be easily importable into other projects.
 
-For testing purposes, a simple **CLI** is provided as well.
-It calls `waterjet_pred_valencia.simulator.simulate()` to simulate a
-fire stream trajectory with the given arguments.
+For testing purposes, a simple CLI (command-line interface) is provided as well.
 The results are saved as interactive HTML plots using bokeh.
-
-Example run:
+If you've installed the package, it should be available in your environment.
 
 ```bash
-python waterjet_pred_valencia.py --angle 24 --speed 30.8 --nozzle 0.0254 --max_s 100
+waterjet-pred-valencia --angle 24 --speed 30.8 --nozzle 0.0254 --max_s 100
 ```
 
 Run the command with the `-h` or `--help` option for a detailed usage description.
-Console output can be activated via the debug mode (option `-d`).
+Console output can be activated via the debug mode (option `-d` or `--debug`).
 
-To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
-edit [parameters.py](waterjet_pred_valencia/parameters.py).
+To play around with physical and model constants
+(e.g., the air entrainment rate `alpha`),
+edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
 
 ## To-Dos
 

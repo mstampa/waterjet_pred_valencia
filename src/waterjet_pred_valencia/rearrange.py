@@ -6,16 +6,17 @@ dy/ds = f(s, y) form expected by the SciPi ODE solver (solve_ivp).
 Manual labor is reduced to expanding the derivates with product and chain rules.
 """
 
-from sympy import Derivative, factor, symbols, solve, simplify, pi, sin, cos
+from sympy import Derivative, factor, pi, solve, symbols, simplify, sin, cos
 from sympy.abc import g, s
 from scipy.integrate._ivp.ivp import OdeResult
 
 
+# TODO: Validate printouts correct after completing switch from flat NDArray to JetState
 def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
     """
     Simplifies a solution for a given symbol and replaces strings such that the
-    expression can be copy-pasted directly from the console printout into simulator.py
-    with minimal changes.
+    expression can be copy-pasted directly from the console printout directly into
+    simulator.py. Manual cleanup can still be needed.
 
     Args:
         name: Name of the variable for which the derivative solution should be printed.
@@ -26,15 +27,21 @@ def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
     expr = factor(simplify(sol[deriv]))
     txt = str(expr)
     txt = txt.replace("pi", "np.pi")
-    for x in ["f", "c", "a"]:
+    txt = txt.replace("_i", "[i]")
+    for x in ["f", "c", "a", "s[i]"]:
+        # sines and cosines are precomputed variables
         txt = txt.replace(f"sin(theta_{x})", f"sin_{x}")
         txt = txt.replace(f"cos(theta_{x})", f"cos_{x}")
+        # 'yc' is the state vector 'y' represented by dataclass JetState
+        txt = txt.replace(f"U{x}", f"yc.U{x}")
+        txt = txt.replace(f"D{x}", f"yc.D{x}")
+        txt = txt.replace(f"theta_{x}", f"yc.theta_{x}")
 
-    txt = txt.replace("sin(theta_s_i)", "sin_s[i]")
-    txt = txt.replace("cos(theta_s_i)", "cos_s[i]")
-    txt = txt.replace("_i", "[i]")
-    f_char = "f" if "[i]" in txt else ""
-    print(f'dyds[state_idx[{f_char}"{name}"]] = {txt}')
+    txt = txt.replace("ND[i]", "yc.ND[i]")
+    txt = txt.replace("rho_f", "yc.rho_f")
+
+    print(f"dyds.{name} = {txt}")
+    return
 
 
 # --- DEFINE SYMBOLS --- #
@@ -211,12 +218,12 @@ print_solution("Dc", Dc_, sol)
 print_solution("Ua", Ua_, sol)
 print_solution("Da", Da_, sol)
 print_solution("theta_a", theta_a_, sol)
-print_solution("ND_{i}", ND_i_, sol)
-print_solution("Us_{i}", Us_i_, sol)
-print_solution("theta_s_{i}", theta_s_i_, sol)
 print_solution("Uf", Uf_, sol)
 print_solution("Df", Df_, sol)
 print_solution("theta_f", theta_f_, sol)
+print_solution("ND[i]", ND_i_, sol)
+print_solution("Us[i]", Us_i_, sol)
+print_solution("theta_s[i]", theta_s_i_, sol)
 print_solution("rho_f", rho_f_, sol)
 
 # All done!

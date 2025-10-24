@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-User interface for testing, demonstration etc.
+Command-line interface for testing, demonstration etc.
 """
 
 from .simulator import simulate
@@ -30,10 +30,10 @@ def main():
 
 def run_simulation(args: Namespace) -> None:
     """
-    Run a fire stream simulation using CLI arguments.
+    Run a fire stream simulation with the provided arguments.
 
     Args:
-        args: Parsed CLI arguments
+        argparse.Namespace: Parsed CLI arguments
     """
 
     clilogger.info("Starting simulation...")
@@ -44,8 +44,10 @@ def run_simulation(args: Namespace) -> None:
         args.nozzle,
         s_span=(0.0, args.max_s),
         debug=args.debug,
+        # NOTE: bypass argument only used for debugging
+        # bypass={"Uc": -0.01, "theta_s": 0.001},
     )
-    clilogger.info(f"Simulation finished after {time() - start_time:.4f}s.")
+    clilogger.info(f"Simulation finished in {time() - start_time:.4f}s.")
 
     clilogger.info(f"Plotting results in {args.plotpath}...")
     plot_solution(sol, idx, args.plotpath)
@@ -58,10 +60,10 @@ def get_arguments() -> Namespace:
     """
     Declares and parses arguments for the CLI.
 
-    Default values are largely taken from Test 5.
+    Default values are mostly taken from Test 5.
 
     Returns:
-        argparse.Namespace: dict-like arguments
+        argparse.Namespace: Parsed CLI arguments
     """
 
     parser = ArgumentParser(

@@ -18,9 +18,7 @@ class SimParams:
     Per-simulation parameters (given or computed once).
     """
 
-    num_drop_classes: int = 0
-
-    # Flag indicating if simulation is at s > s_brk
+    # Flag indicating if simulation is past s_brk
     _is_post_breakup: bool = False
 
     def __init__(
@@ -37,7 +35,6 @@ class SimParams:
         self.injection_speed = injection_speed
         self.injection_angle_deg = injection_angle_deg
         self.nozzle_diameter = nozzle_diameter
-        self.num_drop_classes: int = len(d_drop)
         self.s_brk = get_breakup_distance(self.nozzle_diameter)
         self.weber = get_weber_number(self.injection_speed, self.nozzle_diameter)
         return

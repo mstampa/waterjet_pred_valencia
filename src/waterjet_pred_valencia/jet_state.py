@@ -14,7 +14,8 @@ DTYPE: DTypeLike = np.float32
 class JetState:
     """
     Dataclass representing the state vector (or its derivative).
-    Improves readability when getting/setting values, in exchange for a small performance hit.
+    Improves readability when getting/setting values, in exchange for a very small
+    performance hit.
     """
 
     BASE_VARS: ClassVar[list[str]] = [
@@ -30,39 +31,36 @@ class JetState:
         "x",
         "y",
     ]
-    SPRAY_VARS: ClassVar[list[str]] = ["ND", "Us", "theta_s"]
 
     # can't use DTYPE on left-hand side, unfortunately
-
     Uc: np.float32 = DTYPE(0.0)  # Core phase speed [m/s]
     Dc: np.float32 = DTYPE(0.0)  # Core phase diameter [m]
-
     Ua: np.float32 = DTYPE(0.0)  # Air phase speed [m/s]
     Da: np.float32 = DTYPE(0.0)  # Air phase diameter [m]
     theta_a: np.float32 = DTYPE(0.0)  # Air phase angle (to vertical) [rad]
-
     Uf: np.float32 = DTYPE(0.0)  # Stream speed [m]
     Df: np.float32 = DTYPE(0.0)  # Stream diameter [m]
     theta_f: np.float32 = DTYPE(0.0)  # Stream angle (to vertical) [rad]
-
     rho_f: np.float32 = DTYPE(0.0)  # Stream density [kg/m3]
     x: np.float32 = DTYPE(0.0)  # Horizontal position [m]
     y: np.float32 = DTYPE(0.0)  # Vertical position [m]
 
+    SPRAY_VARS: ClassVar[list[str]] = ["ND", "Us", "theta_s"]
+
     # Spray generation [drops/s]
-    ND: NDArray[np.floating] = field(
+    ND: NDArray[np.float32] = field(
         default_factory=lambda: np.zeros(num_drop_classes, dtype=DTYPE)
     )
     # Spray phase speed [m/s]
-    Us: NDArray[np.floating] = field(
+    Us: NDArray[np.float32] = field(
         default_factory=lambda: np.zeros(num_drop_classes, dtype=DTYPE)
     )
     # Spray phase angle (to vertical) [rad]
-    theta_s: NDArray[np.floating] = field(
+    theta_s: NDArray[np.float32] = field(
         default_factory=lambda: np.zeros(num_drop_classes, dtype=DTYPE)
     )
 
-    def to_array(self) -> NDArray:
+    def to_array(self) -> NDArray[np.float32]:
         """Convert to flat array for solve_ivp()."""
         core = np.array(
             [
@@ -111,11 +109,12 @@ class JetState:
         Compute the flat array index for a given state variable.
 
         Args:
-            name: variable name (e.g. "Uc", "ND", "Us", "theta_s")
+            name: variable name (e.g. "Uc", "theta_a", "ND")
             s_class: spray class index (only for spray variables)
 
         Returns:
-            int: index of the variable in the flattened state vector.
+            int: index of the variable in the flattened state vector returned by
+                to_array().
 
         Raises:
             KeyError if variable name is unknown
@@ -143,21 +142,22 @@ class JetState:
         Returns the initial state vector of the fire stream (see appendix of paper).
 
         Args:
-            injection_speed: U_0 [m/s]
-            injection_angle_deg: theta_0 (relative to horizon) [deg]
+            injection_speed: U_0, water's speed as it exits the nozzle [m/s]
+            injection_angle_deg: theta_0 (nozzle angle relative to horizon) [deg]
             nozzle_diameter: D_0 [m]
-            idx: Mapping of variable names to indices in state vector
 
         Returns:
-            y0: (N,) Initial state vector
+            JetState representing the initial state of the simulation
         """
 
         init = JetState()
-        injection_angle_rad: float = np.deg2rad(injection_angle_deg)
+
         # NOTE: Author confirmed that only the injection angle is measured relative to
         # horizon. Phase angles are measured relative to vertical axis.
-        # TODO: Ask why it was changed in Andres version 25.09.25 06:58 CET
-        injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
+        injection_angle_rad: float = np.deg2rad(injection_angle_deg)
+
+        # TODO: Clarify Andres intention for outcommenting this line in 25.09.25 version
+        # injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
 
         # position
         init.x = np.float32(0.0)
@@ -179,7 +179,7 @@ class JetState:
         # Eq 38-40 air phase
         # NOTE: -1e-6 from notebook, not paper
         init.Ua = np.float32(injection_speed - 1e-6)
-        # NOTE: not 0.0 as in paper to prevent singularity in dyds[Ua]
+        # NOTE: not 0.0 as in paper to prevent singularity in dyds.Ua calculation
         init.Da = np.float32(nozzle_diameter)
         init.theta_a = np.float32(injection_angle_rad)
 
@@ -196,18 +196,17 @@ class JetState:
         """
         Asserts all state variables are (physically) plausible.
 
-        Some checks are relatively, trivial, e.g. "no negative diameters".
-        Others are derived from the plots in Dr. Valencia's original
-        Mathematica notebook.
+        Some checks are relatively trivial, e.g. "diameters can't be negative".
+        Others are derived from the plots in Dr. Valencia's Mathematica notebook.
 
         Args:
-            params: simulation parameters (e.g., nozzle diameter)
+            params: simulation parameters (e.g., injection angle)
 
         Raises:
             AssertionError
         """
 
-        # Speeds [m/s]
+        # Speeds
         U_max: float = 2 * params.injection_speed
         assert (
             0 <= self.Uc <= U_max
@@ -219,7 +218,7 @@ class JetState:
             0 <= self.Uf <= U_max
         ), f"stream speed {self.Uf=} must be in range (0, {U_max})"
 
-        # Diameters [m]
+        # Diameters
         D0: float = params.nozzle_diameter
         assert (
             0 <= self.Dc <= (Dc_max := 2 * D0)
@@ -231,7 +230,7 @@ class JetState:
             0 <= self.Df <= (Df_max := 10.0)
         ), f"{self.Df=} must be in range (0, {Df_max})"
 
-        # Angles [rad, deg]
+        # Angles
         # NOTE: author clarified that all phase angles are relative to vertical axis.
         # Only the injection angle theta_0 is relative to the horizontal.
         th_low: float = 0.0  # upwards [deg]
@@ -242,21 +241,22 @@ class JetState:
         assert (
             th_low <= (th_f_deg := np.rad2deg(self.theta_f)) <= th_high
         ), f"theta_f={th_f_deg}° must be in range {th_low, th_high}°"
-        for i in range(params.num_drop_classes):
+        for i in range(num_drop_classes):
             assert (
                 th_low <= (th_f_deg := np.rad2deg(self.theta_s[i])) <= th_high
             ), f"theta_s[{i}]={th_f_deg}° must be in range {th_low, th_high}°"
 
-        # Spray generation [drops/s]
+        # Spray generation
         ND_max = [1e8, 1e7, 1e6, 1e6, 1e6]
-        assert len(ND_max) == params.num_drop_classes
-        for i in range(params.num_drop_classes):
+        assert len(ND_max) == num_drop_classes
+        for i in range(num_drop_classes):
             assert (
                 0.0 <= self.ND[i] <= ND_max[i]
             ), f"ND{i}={self.ND[i]:.2g} must be in range (0, {ND_max[i]:.2g})"
 
-        # Density [kg/m³]
+        # Density
         assert (
             rho_a <= self.rho_f <= rho_w
-        ), f"Stream density {self.rho_f=:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
+        ), f"Stream density {self.rho_f:.2f} kg/m³ must be between air and water ({rho_a}, {rho_w})"
+
         return
