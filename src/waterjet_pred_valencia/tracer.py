@@ -1,60 +1,65 @@
-#!/usr/bin/env python
+"""Defines Tracer class and helpers."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+import pandas as pd
+from numpy.typing import NDArray
 from pandas import DataFrame
 
 
 @dataclass
 class TraceRowWide:
-    """
-    One row of 'wide' tracing: all scalars and every vector element in a single dict.
-    """
+    """Represents one 'wide' row: All scalars and vector elements in a single dict."""
 
     data: Dict[str, Any] = field(default_factory=dict)
 
 
 class Tracer:
-    """
-    Lightweight tracer to record all variables within ode_right_hand_side() per
-    simulation step for debugging.
+    """Lightweight tracer for all variables within ode_right_hand_side() per sim-step.
 
     Features:
-      - s_stride: minimum spacing (in meters) between recorded rows (e.g., 0.05 for 5 cm).
-      - decimals: round all numeric outputs to this many decimal places in-memory.
+      - s_stride: Minimum spacing between recorded rows [m].
+      - decimals: Round all numeric outputs to this many decimal places in-memory.
       - vector column naming: '<name>[i]' for i-th element.
-      - output as CSV or Parquet
+      - output as CSV or Parquet.
     """
 
     def __init__(self, s_stride: float = 0.01, decimals: int = 6):
-        """
-        Constructor.
+        """Initialize Tracer.
 
         Args:
-            s_stride: spacing between recordings along 's' [m]
-            decimals: number of decimals to print into output file
+            s_stride: Spacing between recordings along 's' [m]
+            decimals: Number of decimals to print into output file.
         """
         self.rows: List[TraceRowWide] = []
         self.s_stride = float(s_stride)
         self.decimals = int(decimals)
-        self._next_s_mark: Optional[float] = None  # set on first snapshot
+        self._next_s_mark: Optional[float] = None  # Set on first snapshot.
+        return
 
     def _should_record(self, s: float) -> bool:
-        """
-        Decide whether to record this step based on s_stride.
+        """Decide whether to record this step based on s_stride.
+
+        Args:
+            s: Current position along streamwise axis [m].
+
+        Returns:
+            True if step should be recorded.
         """
 
         if self._next_s_mark is None:
-            # Align first mark to current s rounded down to the nearest stride, then record.
+            # Align first mark to current s rounded down to nearest stride, then record.
             base = np.floor(s / self.s_stride) * self.s_stride
             self._next_s_mark = base
 
-        # Allow small numerical slack so we don't miss the mark due to float error
-        eps = 1e-12
+        # Allow small numerical slack so we don't miss the mark due to float error.
+        eps: float = 1e-12
         assert self._next_s_mark is not None
         if s + eps >= self._next_s_mark:
-            # Prepare the next mark (may jump multiple strides if solver took a big step)
+            # Prepare next mark (may jump multiple strides if solver took a big step).
             n_strides = max(
                 1, int(np.floor((s - self._next_s_mark) / self.s_stride) + 1)
             )
@@ -64,12 +69,15 @@ class Tracer:
         return False
 
     def snapshot(
-        self, s: float, scalars: Dict[str, float], vectors: Dict[str, np.ndarray]
+        self,
+        s: float,
+        scalars: Dict[str, float],
+        vectors: Dict[str, NDArray[np.floating]],
     ):
         """Append a 'wide' row if s advanced past the next stride mark.
 
         Args:
-            s: Current arclength (or independent variable) in meters.
+            s: Current arclength (or independent variable) [m].
             scalars: Mapping of scalar names -> float values.
             vectors: Mapping of vector names -> 1-D arrays (same length per name).
         """
@@ -78,14 +86,14 @@ class Tracer:
 
         row: Dict[str, Any] = {}
 
-        # Always include s (rounded)
+        # Always include s (rounded).
         row["s"] = np.round(float(s), self.decimals)
 
-        # Round scalars
+        # Round scalars.
         for k, v in scalars.items():
             row[k] = np.round(float(v), self.decimals)
 
-        # Round and flatten vectors: name -> name[i]
+        # Round and flatten vectors: name -> name[i].
         for name, arr in vectors.items():
             a = np.asarray(arr, dtype=float)
             a = np.round(a, self.decimals)
@@ -93,16 +101,16 @@ class Tracer:
                 row[f"{name}[{i}]"] = val
 
         self.rows.append(TraceRowWide(data=row))
+        return
 
     def to_wide_dataframe(self) -> DataFrame:
-        """
-        Return a wide pandas DataFrame: one row per logged s; columns include scalars
-        and vector elements.
+        """Return a wide pandas.DataFrame.
+
+        One row per logged s. Columns include scalars and vector elements.
 
         Returns:
             pandas.DataFrame
         """
-        import pandas as pd
 
         if not self.rows:
             return pd.DataFrame(
@@ -110,16 +118,15 @@ class Tracer:
                     "s": [],
                 }
             )
-        # Union of all keys (some vectors/scalars might be missing in first rows if you add later)
         all_keys = set()
         for r in self.rows:
             all_keys.update(r.data.keys())
 
-        # Stable column order: s first, then others sorted
+        # Stable column order: s first, then others sorted.
         all_keys.discard("s")
         columns = ["s"] + sorted(all_keys)
 
-        # Build records
+        # Build records.
         records = []
         for r in self.rows:
             rec = {c: np.nan for c in columns}
@@ -129,12 +136,28 @@ class Tracer:
 
         return DataFrame.from_records(records, columns=columns)
 
-    def to_csv(self, path: str):
-        """Write wide CSV with numeric formatting."""
-        df = self.to_wide_dataframe()
-        df.to_csv(path, index=False, float_format=f"%.{self.decimals}f")
+    def to_csv(self, path: Path) -> None:
+        """Export data as comma-separated values (CSV) file.
 
-    def to_parquet(self, path: str, compression: str = "zstd"):
-        """Write Parquet (compact, fast). Use if CSV still too big."""
-        df = self.to_wide_dataframe()
-        df.to_parquet(path, compression=compression, index=False)
+        Args:
+            path: Where to save the file to (must have .csv extension).
+        """
+        assert not path.exists()
+        assert path.is_file()
+        assert path.suffix == ".csv"
+        df: DataFrame = self.to_wide_dataframe()
+        df.to_csv(str(path), index=False, float_format=f"%.{self.decimals}f")
+
+    def to_parquet(self, path: Path, compression: str = "zstd") -> None:
+        """Export data to compressed Parquet. Use if CSV still too big.
+
+        Args:
+            path: Where to save the file to (must have .pqt extension).
+            compression: Which compression method to use (default: zstd).
+        """
+        assert not path.exists()
+        assert path.is_file()
+        assert path.suffix == ".pqt"
+        df: DataFrame = self.to_wide_dataframe()
+        df.to_parquet(str(path), compression=compression, index=False)
+        return

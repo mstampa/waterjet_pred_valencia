@@ -1,36 +1,39 @@
-"""Uses 'bokeh' to plot simulation results and export as interactive HTML."""
+#!/usr/bin/env python3
 
-from pathlib import Path
-from typing import Dict
+"""
+Plots simulation results using bokeh, exports as HTML.
+"""
 
-import numpy as np
+from .jet_state import JetState
+
 from bokeh.layouts import layout
 from bokeh.models import ColumnDataSource, Range1d
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
-from numpy.typing import NDArray
+import numpy as np
+from pathlib import Path
 from scipy.integrate._ivp.ivp import OdeResult
 
-from .jet_state import JetState
 
-
-def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None:
-    """Plot trajectory and evolution of variables over the streamwise axis 's'.
+def plot_solution(sol: OdeResult, state_idx: dict[str, int], path: Path) -> None:
+    """
+    Plots trajectory and evolution of variables over the streamwise axis s.
 
     Args:
-        sol: ODE solution object from solve_ivp.
-        state_idx: Mapping of variable names to indices in sol.y .
-        path: Where to save HTML containing the plots to.
+        sol: ODE solution object from solve_ivp
+        state_idx: Mapping of variable names to indices in sol.y
+        path: Where to save HTML containing the plots to
     """
 
-    path_str: str = str(path)
+    path_str = str(path)
     output_file(path_str, title="Fire stream simulation")
-    x_margin: float = 1.0
-    s_end: float = sol.t[-1]  # last domain coordinate to plot
+    x_margin = 1.0
+    s_end = sol.t[-1]  # last domain coordinate to plot
     if len(sol.t_events[0]) > 0:
         s_end = sol.t_events[0][0]  # s at ground impact
 
-    # Define data source for bokeh with all relevant variables.
+    # define data source for bokeh with all relevant variables
+    # TODO: Clarify angle usage. This plotting function expects 'above horizon'.
     source = ColumnDataSource(
         data={
             "s": sol.t,
@@ -54,7 +57,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
     for i in range(5):
         source.data[f"ND_{i}"] = sol.y[state_idx[f"ND_{i}"]]  # pyright: ignore
 
-    # Prepare main plot (water jet trajectory).
+    # prepare main plot (water jet trajectory)
     p_traj = figure(
         title="Fire stream trajectory",
         x_axis_label="x / m",
@@ -83,10 +86,11 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         upper[i, :] += np.dot(rot, np.array([0, r]))
         lower[i, :] += np.dot(rot, np.array([0, -r]))
 
-    # Build patch coordinates (upper forward, lower backward)
-    x_patch: NDArray = np.concatenate([upper[:, 0], lower[::-1, 0]])
-    y_patch: NDArray = np.concatenate([upper[:, 1], lower[::-1, 1]])
-    # Draw diameter evolution as patch.
+    # build patch coordinates (upper forward, lower backward)
+    x_patch = np.concatenate([upper[:, 0], lower[::-1, 0]])
+    y_patch = np.concatenate([upper[:, 1], lower[::-1, 1]])
+
+    # draw diameter evolution as patch
     p_traj.patch(
         x_patch,
         y_patch,
@@ -99,10 +103,10 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
 
     # --- DEBUG PLOTS --- #
 
-    x_axis_label: str = "Streamwise position s / m"
+    x_axis_label = "Streamwise position s / m"
     x_range = Range1d(0, s_end + x_margin)
 
-    # Speeds of core, air, spray, stream phase (U_c, U_a, U_s, U_f).
+    # speeds of core, air, spray, stream phase
     p_speeds = figure(
         title="Phase speeds",
         x_axis_label=x_axis_label,
@@ -134,7 +138,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         legend_label="Uf",
     )
 
-    # Diameters of each phase (D_c, D_a, D_s, D_f).
+    # diameters of each phase
     p_diameters = figure(
         title="Phase diameters",
         x_axis_label=x_axis_label,
@@ -167,7 +171,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
     )
     p_diameters.x_range = Range1d(0, s_end + x_margin)
 
-    # Angles of each phase (theta_c, theta_a, theta_s, theta_f).
+    # angles of each phase
     p_angles = figure(
         title="Phase angles (above horizon)",
         x_axis_label=x_axis_label,
@@ -192,7 +196,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
     )
     p_angles.x_range = Range1d(0, s_end + x_margin)
 
-    # Drop formation rate for each droplet class (ND[i]).
+    # Drop formation rate for each droplet class
     p_nd = figure(
         title="Drop count",
         x_axis_label=x_axis_label,
@@ -211,8 +215,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
             legend_label=f"ND_{i}",
         )
 
-    # Stream density (rho_f).
-    # Should go from 100% water (rho_w) to more and more air-like (rho_a).
+    # Stream density (from 100% water to more and more air-like)
     p_rho = figure(
         title="Stream density",
         x_axis_label=x_axis_label,
@@ -228,10 +231,9 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         line_color="purple",
         legend_label="rho_f",
     )
-    # TODO: Plot rho_w and rho_a as horizontal lines.
 
-    # Put all figures into a grid layout.
-    plot_layout = layout(
+    # grid layout for all plots
+    mylayout = layout(
         [
             [p_traj],
             [p_speeds, p_diameters],
@@ -241,5 +243,5 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         sizing_mode="stretch_width",
     )
 
-    save(plot_layout)
+    save(mylayout)
     return

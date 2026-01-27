@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 
-"""Helper script to rearrange the equations from the research article into the
+"""
+Helper script to rearrange the equations from the research article into the
 dy/ds = f(s, y) form expected by the SciPi ODE solver (solve_ivp).
 Manual labor is reduced to expanding the derivates with product and chain rules.
 """
 
-from scipy.integrate._ivp.ivp import OdeResult
-from sympy import Derivative, cos, factor, pi, simplify, sin, solve, symbols
+from sympy import Derivative, factor, pi, solve, symbols, simplify, sin, cos
 from sympy.abc import g, s
+from scipy.integrate._ivp.ivp import OdeResult
 
 
-# TODO: Validate printouts after completing switch from flat NDArray to JetState
+# TODO: Validate printouts correct after completing switch from flat NDArray to JetState
 def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
-    """Convert solution printout to code that can be copy-pasted into simulator.py.
-
-    May still need manual clean-up afterwards.
+    """
+    Simplifies a solution for a given symbol and replaces strings such that the
+    expression can be copy-pasted directly from the console printout directly into
+    simulator.py. Manual cleanup can still be needed.
 
     Args:
         name: Name of the variable for which the derivative solution should be printed.
@@ -44,44 +46,41 @@ def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
 
 # --- DEFINE SYMBOLS --- #
 
-# Model constants: water and air density, drop diameters.
+# Model constants: water and air density, drop diameters
 rho_w, rho_a, d_drop_i = symbols("rho_w rho_a d_drop_i")
 
-# Speed, diameter and angle per phase.
+# Speed, diameter and angle per phase
 Uc, Dc, theta_c = symbols("Uc Dc theta_c")  # core
 Ua, Da, theta_a = symbols("Ua Da theta_a")  # air
 Uf, Df, theta_f = symbols("Uf Df theta_f")  # stream
-
 # Stream density
 rho_f = symbols("rho_f")
-
 # Spray phase drop formation rate, speed, angle
 ND_i, Us_i, theta_s_i = symbols("ND_i Us_i theta_s_i")
 
-# Mass transfer from core phase
+# mass transfer from core phase
 m_c2s_i, m_c2s_total = symbols("m_c2s_i m_c2s_total")  # to spray phase
-# Momentum transfer from core phase
+# momentum transfer from core phase
 f_c2a, f_rc2a = symbols("f_c2a, f_rc2a")  # to air phase
 f_c2s_i, f_rc2s_i = symbols("f_c2s_i f_rc2s_i")  # to spray phase
 
-# Mass transfer from air phase.
+# mass transfer from air phase
 m_a2sur = symbols("m_a2sur")  # to surroundings
-# Momentum transfer from air phase.
+# momentum transfer from air phase
 f_a2sur, f_ra2sur = symbols("f_a2sur f_ra2sur")  # to surroundings
 
-# Mass transfer from spray phase.
+# momentum transfer from spray phase
 m_s2sur_i, m_s2sur_total = symbols("m_s2sur_i m_s2sur_total")  # to surroundings
-# Momentum transfer from spray phase.
+# momentum transfer from spray phase
 f_s2a_i, f_s2a_total = symbols("f_s2a_i, f_s2a_total")  # streamwise to air phase
 f_rs2a_i, f_rs2a_total = symbols("f_rs2a_i, f_rs2a_total")  # radial to air phase
 f_s2sur_i, f_s2sur_total = symbols("f_s2sur_i f_s2sur_total")  # s-wise to surroundings
 f_rs2sur_i, f_rs2sur_total = symbols("f_rs2sur_i f_rs2sur_total")  # radial to surr
 
-# Mass transfer from surroundings.
+# mass transfer from surroundings
 m_sur2f = symbols("m_sur2f")  # to stream phase (air entrainment)
 
-# --- DECLARE DERIVATIVES --- #
-
+# --- DEFINE DERIVATIVES --- #
 Uc_, Ua_, Uf_ = Derivative(Uc, s), Derivative(Ua, s), Derivative(Uf, s)
 Us_i_ = Derivative(Us_i, s)
 Dc_, Da_, Df_ = Derivative(Dc, s), Derivative(Da, s), Derivative(Df, s)
@@ -91,10 +90,10 @@ ND_i_, rho_f_ = Derivative(ND_i, s), Derivative(rho_f, s)
 
 # --- DEFINE EQUATIONS --- #
 
-# Core phase mass conservation.
+# Core phase mass conservation
 eq1 = (pi / 4) * rho_w * (2 * Dc * Uc * Dc_ + Dc**2 * Uc_) + m_c2s_total
 
-# Core phase momentum conservation.
+# Core phase momentum conservation
 eq2 = (
     (pi / 4) * rho_w * (2 * Dc * (Uc**2) * Dc_ + 2 * Uc * (Dc**2) * Uc_)
     + Uc * m_c2s_total
@@ -102,10 +101,10 @@ eq2 = (
     + f_c2a
 )
 
-# Air phase mass conservation.
+# Air phase mass conservation
 eq3 = (pi / 4) * rho_a * (2 * Da * Ua * Da_ + (Da**2) * Ua_) - m_sur2f + m_a2sur
 
-# Air phase streamwise momentum.
+# Air phase streamwise momentum
 eq4 = (
     (pi / 4) * rho_a * (2 * Da * (Ua**2) * Da_ + 2 * Ua * (Da**2) * Ua_)
     - f_s2a_total
@@ -113,7 +112,7 @@ eq4 = (
     - f_c2a
 )
 
-# Air phase radial momentum.
+# Air phase radial momentum
 eq5 = (
     (pi / 4) * rho_a * (Da**2) * (Ua**2) * -(sin(theta_a) * theta_a_)  # pyright: ignore
     - f_rs2a_total
@@ -121,10 +120,10 @@ eq5 = (
     - f_rc2a
 )
 
-# Spray phase mass conservation.
+# Spray phase mass conservation
 eq6 = (pi / 6) * rho_w * (d_drop_i**3) * ND_i_ - m_c2s_i + m_s2sur_i
 
-# Spray phase streamwise momentum.
+# Spray phase streamwise momentum
 eq7 = (
     (pi / 6) * rho_w * (d_drop_i**3) * (Us_i * ND_i_ + ND_i * Us_i_)
     + (pi / 6) * rho_w * (d_drop_i**3) * g * (ND_i / Us_i) * cos(theta_c)
@@ -133,16 +132,21 @@ eq7 = (
     + f_s2a_i
 )
 
-# Spray phase radial momentum.
+# Spray phase radial momentum
 eq8 = (
-    (pi / 6) * rho_w * (d_drop_i**3) * ND_i * Us_i * (-(sin(theta_s_i) * theta_s_i_))  # pyright: ignore
+    (pi / 6)
+    * rho_w
+    * (d_drop_i**3)
+    * ND_i
+    * Us_i
+    * (-(sin(theta_s_i) * theta_s_i_))  # pyright: ignore
     + (pi / 6) * rho_w * (d_drop_i**3) * g * (ND_i / Us_i) * sin(theta_s_i)
     - f_rc2s_i
     + f_rs2sur_i
     + f_rs2a_i
 )
 
-# Stream phase mass conservation.
+# Stream phase mass conservation
 eq9 = (
     (pi / 4)
     * ((Df**2) * Uf * rho_f_ + 2 * Df * rho_f * Uf * Df_ + rho_f * (Df**2) * Uf_)
@@ -151,7 +155,7 @@ eq9 = (
     + m_s2sur_total
 )
 
-# Spray streamwise momentum.
+# Spray streamwise momentum
 eq10 = (
     (pi / 4)
     * rho_f
@@ -165,15 +169,19 @@ eq10 = (
     + f_s2sur_total
 )
 
-# Spray radial momentum.
+# Spray radial momentum
 eq11 = (
-    (pi / 4) * rho_f * (Df**2) * (Uf**2) * (-(sin(theta_f) * theta_f_))  # pyright: ignore
+    (pi / 4)
+    * rho_f
+    * (Df**2)
+    * (Uf**2)
+    * (-(sin(theta_f) * theta_f_))  # pyright: ignore
     + (pi / 4) * (rho_f - rho_a) * (Df**2) * g * sin(theta_f)
     + f_ra2sur
     + f_rs2sur_total
 )
 
-# Volume conservation.
+# Volume conservation
 # NOTE: Typo in paper: s refers to "stream" here and not "spray"
 eq12 = (
     (pi / 4) * (2 * Df * Uf * Df_ + (Df**2) * Uf_)
@@ -182,7 +190,7 @@ eq12 = (
     + (m_s2sur_total / rho_w)
 )
 
-# --- SYMBOLICALLY SOLVE EQUATIONS WITH SYMPY --- #
+# --- REARRANGE --- #
 
 sol = solve(
     (eq1, eq2, eq3, eq4, eq5, eq6, eq7, eq8, eq9, eq10, eq11, eq12),
@@ -218,4 +226,5 @@ print_solution("Us[i]", Us_i_, sol)
 print_solution("theta_s[i]", theta_s_i_, sol)
 print_solution("rho_f", rho_f_, sol)
 
+# All done!
 exit()

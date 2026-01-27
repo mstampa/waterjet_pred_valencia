@@ -1,11 +1,17 @@
+# gitignore
 
 # Plots and traces
 *.html
 *.csv
 
 # Python
-*.py[codz]
 __pycache__/
+.venv
+*.py[codz]
 
 # Packaging
 *.egg-info
+
+# General
+**.~
+**.swp

@@ -2,11 +2,14 @@
 name = "waterjet_pred_valencia"
 version = "0.1.0"
 description = "Fire stream model derived from https://doi.org/10.1007/s10694-021-01175-1."
+
 authors = [
     { name="Merlin Stampa", email="merlin.stampa@fh-dortmund.de" }
 ]
+
 license = "GPL-3.0-or-later"
 readme = "README.md"
+
 requires-python = ">=3.10"
 dependencies = [
     "bokeh",
@@ -17,13 +20,28 @@ dependencies = [
     "sympy",
 ]
 
-[project.scripts]
-waterjet-pred-valencia = "waterjet_pred_valencia.cli:main"
+[dependency-groups]
+dev = [
+    "ruff",
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project.urls]
+Homepage = "https://github.com/mstampa/waterjet_pred_valencia"
+
+[project.scripts]
+waterjet-pred-valencia = "waterjet_pred_valencia.cli:main"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["waterjet_pred_valencia*"]
+
 [tool.setuptools]
-package-dir = { "" = "src"}
-packages = ["waterjet_pred_valencia"]
+package-dir = { "" = "src" }
+

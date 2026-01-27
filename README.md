@@ -5,8 +5,9 @@ Work in progress and currently not functional!
 There seem to be errors in the ODE system.
 Example plots were generated with some of the computations bypassed.
 
-This is a Python module for simulating the trajectories of "fire streams",
-i.e., large water jets shot from fire monitors.
+---
+
+This is a Python module for simulating the trajectories of "fire streams", i.e., large water jets shot from fire monitors.
 The backbone is a 1D Eulerian analytical model reproduced from this publication:
 
 ```bibtex
@@ -25,8 +26,7 @@ The backbone is a 1D Eulerian analytical model reproduced from this publication:
 
 The model describes the fire stream as a combination of three phases:
 water-core phase, air phase, and spray phase.
-It includes air entrainment, jet break-up spray generation
-and multi-dispersion (i.e., droplets of multiple sizes).
+It includes air entrainment, jet break-up spray generation and multi-dispersion (i.e., droplets of multiple sizes).
 Trajectory and spray behavior are modeled over the streamwise axis "s".
 
 ![Example plots](doc/example_plots.png)
@@ -37,21 +37,23 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 
 Key dependencies of this package are:
 
-* [SciPy](https://scipy.org) for solving the ODE
-* [bokeh](https://bokeh.org) for plotting
+* [NumPy](https://numpy.org) for numerical computing.
+* [SciPy](https://scipy.org) for solving the ODE.
+* [bokeh](https://bokeh.org) for plotting.
 
 Developers wishing to contribute also require:
 
-* [pandas](https://pandas.pydata.org/) for tracer output
-* [pytest](https://pytest.org) for unit tests
-* [SymPy](https://sympy.org) for the `rearrange.py` helper script
+* [pandas](https://pandas.pydata.org) for tracer output.
+* [pytest](https://pytest.org) for unit tests.
+* [ruff](https://docs.astral.sh/ruff) for linting.
+* [SymPy](https://sympy.org) for the `rearrange.py` helper script.
 
 ### Installation
 
-To install the package into your local Python environment, do:
+To install the package and its dependencies into your local Python environment, run:
 
 ```bash
-cd <project root>
+cd /path/to/project
 pip install -e .  # -e = editable
 ```
 
@@ -71,18 +73,17 @@ The results are saved as interactive HTML plots using bokeh.
 If you've installed the package, it should be available in your environment.
 
 ```bash
-waterjet-pred-valencia --angle 24 --speed 30.8 --nozzle 0.0254 --max_s 100
+python -m waterjet-pred-valencia.cli --angle 24.0 --speed 30.8 --nozzle 0.0254 --max_s 100
 ```
 
 Run the command with the `-h` or `--help` option for a detailed usage description.
-Console output can be activated via the debug mode (option `-d` or `--debug`).
+Extended console output can be activated via the debug mode (option `-d` or `--debug`).
 
-To play around with physical and model constants
-(e.g., the air entrainment rate `alpha`),
+To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
 
 ## To-Dos
 
-* Fix ODE system
-* Compare results to original research article
-* Use as surrogate model in Smith Predictor control
+* Fix ODE system.
+* Compare results to original research article.
+* Model wind effects.
