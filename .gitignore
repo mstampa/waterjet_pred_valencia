@@ -5,13 +5,14 @@
 *.csv
 
 # Python
-__pycache__/
-.venv
-*.py[codz]
-
-# Packaging
+build
 *.egg-info
+**__pycache__
+*.py[codz]
+.ruff_cache
+.venv
 
 # General
-**.~
+**.*~
+**.bak
 **.swp
