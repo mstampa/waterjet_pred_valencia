@@ -19,6 +19,7 @@ logger = logging.getLogger("cli")
 
 def main():
     """Entrypoint."""
+
     args: Namespace = get_arguments()
 
     # Configure logging.
@@ -67,8 +68,8 @@ def run_simulation(args: Namespace) -> None:
             tracer=tracer,
         )
 
-        logger.info(f"Plotting results and saving to {args.plotpath}...")
-        plot_solution(sol, idx, args.plotpath)
+        logger.info(f"Plotting results and saving to {args.output}...")
+        plot_solution(sol, idx, args.output)
 
     except Exception as e:
         logger.error(f"An error occured: {e}")
@@ -76,9 +77,9 @@ def run_simulation(args: Namespace) -> None:
         logger.info(f"Execution time: {time() - start_time:.6f} sec.")
 
         if tracer is not None:
-            tracepath = Path(args.tracepath)
-            logger.info(f"Saving trace to {str(tracepath)}")
-            tracer.to_csv(tracepath)
+            path_trace = Path(args.trace)
+            logger.info(f"Saving trace to {str(path_trace)}")
+            tracer.to_csv(path_trace)
 
     logger.info("All done!")
     return
@@ -102,7 +103,7 @@ def get_arguments() -> Namespace:
     parser.add_argument(
         "-a",
         "--angle",
-        help="theta_0 injection angle above horizon (default: %(default)s) [deg]",
+        help="theta_0 injection angle above horizon [deg]. Default: %(default)s.",
         metavar="float",
         type=float,
         default=24.0,
@@ -110,7 +111,7 @@ def get_arguments() -> Namespace:
     parser.add_argument(
         "-n",
         "--nozzle",
-        help="D_0 nozzle diameter (default: %(default)s) [m].",
+        help="D_0 nozzle diameter [m]. Default: %(default)s.",
         metavar="float",
         type=float,
         default=0.0254,
@@ -118,7 +119,7 @@ def get_arguments() -> Namespace:
     parser.add_argument(
         "-u",
         "--speed",
-        help="U_0 injection speed (default: %(default)s) [m/s].",
+        help="U_0 injection speed [m/s]. Default: %(default)s.",
         metavar="float",
         type=float,
         default=30.8,
@@ -128,37 +129,37 @@ def get_arguments() -> Namespace:
     parser.add_argument(
         "-d",
         "--debug",
-        help="Activates console printouts, auto-drops into PDB on error.",
+        help="Activates tracer, console printouts, and auto-drop into PDB on error.",
         action="store_true",
         default=False,
     )
     parser.add_argument(
         "--span",
-        help="Simulation span, a.k.a. maximum for s (default: %(default)s) [m].",
+        help="Simulation span, i.e., maximum value for s [m]. Default: %(default)s.",
         metavar="float",
         type=float,
         default=100.0,
     )
     parser.add_argument(
         "--max_step",
-        help="Max simulation step (default: %(default)s) [m]."
+        help="Max simulation step [m]. Default: %(default)s"
         + " Increase to trade accuracy for performance.",
         metavar="float",
         type=float,
         default=1e-3,
     )
     parser.add_argument(
-        "-p",
-        "--plotpath",
-        help="Path to save the generated plots to (default: %(default)s).",
+        "-o",
+        "--output",
+        help="Path to save the generated plots to. Default: %(default)s.",
         metavar="path",
         type=Path,
         default=Path(gettempdir()) / "valencia.html",
     )
     parser.add_argument(
-        "--tracepath",
-        help="Path to save the traced variables to (default: %(default)s)."
-        + " Requires debug mode.",
+        "--trace",
+        help="Path to save the traced variables to. Requires debug mode.\
+        Default: %(default)s.",
         metavar="path",
         type=Path,
         default=Path(gettempdir()) / "trace.csv",

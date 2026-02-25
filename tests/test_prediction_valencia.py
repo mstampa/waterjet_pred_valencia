@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 
-"""
-Unit tests for water jet trajectory predictions.
-"""
-
-from waterjet_pred_valencia.simulator import simulate
+"""Unit tests for water jet trajectory predictions."""
 
 import numpy as np
 import pytest
 
+from waterjet_pred_valencia.simulator import simulate
 
-# inputs taken from article's table 1, expected results from text and figure 4
+
+# Inputs taken from article's table 1.
+# Expected results from text and figure 4.
 @pytest.mark.parametrize(
     "speed,angle_deg,exp_x_max,exp_y_max",
     [
@@ -29,7 +28,7 @@ def test_valencia_article_results(speed, angle_deg, exp_x_max, exp_y_max):
     x_last = sol.y[idx["x"], -1]
     y_max = np.max(sol.y[idx["y"], :])
 
-    assert np.isclose(
-        x_last, exp_x_max, atol=3.0
-    ), f"x_last = {x_last:.2f} m, expected ~{exp_x_max} m"
+    assert np.isclose(x_last, exp_x_max, atol=3.0), (
+        f"x_last = {x_last:.2f} m, expected ~{exp_x_max} m"
+    )
     assert y_max <= exp_y_max, f"{y_max=:.2f} m, expected ~{exp_y_max} m"

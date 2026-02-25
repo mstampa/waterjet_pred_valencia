@@ -24,7 +24,7 @@ class Tracer:
       - s_stride: Minimum spacing between recorded rows [m].
       - decimals: Round all numeric outputs to this many decimal places in-memory.
       - vector column naming: '<name>[i]' for i-th element.
-      - output as CSV or Parquet.
+      - output as CSV.
     """
 
     def __init__(self, s_stride: float = 0.01, decimals: int = 6):
@@ -147,17 +147,4 @@ class Tracer:
         assert path.suffix == ".csv"
         df: DataFrame = self.to_wide_dataframe()
         df.to_csv(str(path), index=False, float_format=f"%.{self.decimals}f")
-
-    def to_parquet(self, path: Path, compression: str = "zstd") -> None:
-        """Export data to compressed Parquet. Use if CSV still too big.
-
-        Args:
-            path: Where to save the file to (must have .pqt extension).
-            compression: Which compression method to use (default: zstd).
-        """
-        assert not path.exists()
-        assert path.is_file()
-        assert path.suffix == ".pqt"
-        df: DataFrame = self.to_wide_dataframe()
-        df.to_parquet(str(path), compression=compression, index=False)
         return

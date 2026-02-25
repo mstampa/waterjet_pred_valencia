@@ -20,15 +20,16 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
     Args:
         sol: ODE solution object from solve_ivp.
         state_idx: Mapping of variable names to indices in sol.y .
-        path: Where to save HTML containing the plots to.
+        path: Path to export the plot to (html).
     """
 
     path_str: str = str(path)
+    assert path_str.endswith("html"), "Plot path must be an HTML file."
     output_file(path_str, title="Fire stream simulation")
+
     x_margin: float = 1.0
-    s_end: float = sol.t[-1]  # last domain coordinate to plot
-    if len(sol.t_events[0]) > 0:
-        s_end = sol.t_events[0][0]  # s at ground impact
+    # Last 's' value to plot (termination event or pre-defined simulation span)
+    s_end = sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1]
 
     # Define data source for bokeh with all relevant variables.
     source = ColumnDataSource(
@@ -83,10 +84,9 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         upper[i, :] += np.dot(rot, np.array([0, r]))
         lower[i, :] += np.dot(rot, np.array([0, -r]))
 
-    # Build patch coordinates (upper forward, lower backward)
+    # Draw diameter evolution as patch (coordinates: upper forward, lower backward)
     x_patch: NDArray = np.concatenate([upper[:, 0], lower[::-1, 0]])
     y_patch: NDArray = np.concatenate([upper[:, 1], lower[::-1, 1]])
-    # Draw diameter evolution as patch.
     p_traj.patch(
         x_patch,
         y_patch,
@@ -228,9 +228,9 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         line_color="purple",
         legend_label="rho_f",
     )
-    # TODO: Plot rho_w and rho_a as horizontal lines.
+    # TODO: Plot rho_w and rho_a as horizontal reference lines.
 
-    # Put all figures into a grid layout.
+    # Place figures in a grid layout.
     plot_layout = layout(
         [
             [p_traj],

@@ -22,7 +22,6 @@ class SimParams:
         injection_speed (U_0): Speed of the water as it exits the nozzle [m/s].
         injection_angle_deg (theta_0): Elevation angle of the nozzle [deg].
         nozzle_diameter (D_0): Nozzle diameter [m].
-
     """
 
     # Flag indicating if simulation is past s_brk

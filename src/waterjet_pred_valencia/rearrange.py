@@ -12,9 +12,9 @@ from sympy.abc import g, s
 
 # TODO: Validate printouts after completing switch from flat NDArray to JetState
 def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
-    """Convert solution printout to code that can be copy-pasted into simulator.py.
+    """Convert solution printout to code that can be copy-pasted into `simulator.py`.
 
-    May still need manual clean-up afterwards.
+    May require some manual clean-up.
 
     Args:
         name: Name of the variable for which the derivative solution should be printed.
@@ -30,6 +30,7 @@ def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
         # sines and cosines are precomputed variables
         txt = txt.replace(f"sin(theta_{x})", f"sin_{x}")
         txt = txt.replace(f"cos(theta_{x})", f"cos_{x}")
+
         # 'yc' is the state vector 'y' represented by dataclass JetState
         txt = txt.replace(f"U{x}", f"yc.U{x}")
         txt = txt.replace(f"D{x}", f"yc.D{x}")
@@ -174,7 +175,7 @@ eq11 = (
 )
 
 # Volume conservation.
-# NOTE: Typo in paper: s refers to "stream" here and not "spray"
+# NOTE: Typo in paper: s refers to "stream" here and not "spray".
 eq12 = (
     (pi / 4) * (2 * Df * Uf * Df_ + (Df**2) * Uf_)
     - (m_sur2f / rho_a)

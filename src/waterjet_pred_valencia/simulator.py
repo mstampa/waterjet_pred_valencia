@@ -39,7 +39,7 @@ from .parameters import (
 )
 from .tracer import Tracer
 
-logger = logging.getLogger("simulator")
+logger = logging.getLogger(__name__)
 
 
 def simulate(
@@ -53,8 +53,7 @@ def simulate(
     bypass: Optional[Dict[str, float]] = None,
     tracer: Optional[Tracer] = None,
 ) -> OdeResult:
-    """
-    Simulates a fire stream with the given injection parameters.
+    """Simulate a fire stream trajectory.
 
     Args:
         injection_speed: U_0 Speed of the water as it exists the nozzle [m/s].
@@ -64,8 +63,8 @@ def simulate(
         max_step: Max integration step size [m].
         method: See documentation for `scipy.integrate.solve_ivp`.
 
-    Args for debugging purposes:
-        debug: Enable debug mode (enhanced console printouts and auto-drop into PDB).
+    Optional args for debugging:
+        debug: Enable debug mode (console printouts, auto-drop into PDB).
         bypass: Map of derivatives to override with provided values.
         tracer: Records variables (not only state vector) per simulation step.
 
@@ -116,7 +115,7 @@ def simulate(
         injection_speed, injection_angle_deg, nozzle_diameter
     )
 
-    # Define event to stop the simulation when water hits the ground (y < 0).
+    # Event to stop the simulation when water hits the ground (y < 0).
     def hit_ground_event(_, y) -> float:
         idx = JetState.get_idx("y")
         return y[idx]
@@ -125,7 +124,7 @@ def simulate(
     ev_ground.terminal = True  # pyright: ignore
     ev_ground.direction = -1  # pyright: ignore
 
-    # Define event to stop the sim when the stream's density is very close to air.
+    # Event to stop the simulation when the stream's density is very close to air.
     def mass_depleted_event(_, y, tol=1e-3) -> float:
         idx = JetState.get_idx("rho_f")
         return y[idx] - (rho_a + tol)
@@ -167,29 +166,26 @@ def ode_right_hand_side(
     bypass: Optional[Dict[str, float]] = None,
     tracer: Optional[Tracer] = None,
 ) -> NDArray[DTYPE]:
-    """Define the right-hand side of the ODE system for the fire stream model.
+    """Compute the derivative of the state vector for a single simulation step.
 
-    Computes the derivative (dyds) of every element in the state vector at the
-    streamwise coordinate 's'. The equations are derived with rearrange.py from the
-    originals found in the paper.
-
+    Equations are derived from the originals in the paper using `rearrange.py`.
     Physical and models constants (g, rho_w, rho_a, etc.) are assumed to be accessible
-    globally (imported from parameters.py).
+    globally (imported from `parameters.py`).
 
     Args:
         s: Current position along streamwise axis [m].
-        y: Current state vector (internally converted to dataclass 'JetState').
-        params: Given and computed-once parameters.
+        y: Current state vector (internally converted to dataclass `JetState`).
+        params: User and computed-once parameters.
 
     Optional args for debugging:
-        bypass: Map of derivatives to override with provided values
+        bypass: Map of derivatives to override with provided values.
         tracer: Records all variables (not only the state vector) per simulation step.
 
     Returns:
         Derivatives of the state vector at s.
     """
     # Convert state vector to dataclass for better readability and type safety.
-    yc = JetState.from_array(y)
+    yc: JetState = JetState.from_array(y)
     print_debug_state(s, yc, params)
     yc.assert_physically_plausible(params)
     dyds = JetState()
@@ -200,19 +196,19 @@ def ode_right_hand_side(
     TOL = DTYPE(1e-6)
 
     # "The local direction of the core is assumed to be equal to the fire stream"
-    theta_c = yc.theta_f
+    theta_c: DTYPE = yc.theta_f
 
     # --- PRECOMPUTE SINES, COSINES, VECTORS, ... --- #
 
     # sin and cos of stream, core, and air phase angles.
-    # FIX: 1e-9 added in Andres' version 25.09.25 06:58 CET
+    # FIX: 1e-9 added in Andres' version from 25.09.25. Check why.
     sin_f, cos_f = np.sin(yc.theta_f) + 1e-9, np.cos(yc.theta_f)
     sin_c, cos_c = np.sin(theta_c) + 1e-9, np.cos(theta_c)
     sin_a, cos_a = np.sin(yc.theta_a) + 1e-9, np.cos(yc.theta_a)
 
     # Safe denominators for ODEs to prevent division by ~0.
-    den_f: float = sin_f
-    den_a: float = sin_a
+    den_f: DTYPE = sin_f
+    den_a: DTYPE = sin_a
     if abs(den_f) < TOL:
         logger.warning(f"sin(theta_f)≈0 at {s=:.3f}; applying floor={TOL:g}")
         den_f = np.sign(sin_f) * max(abs(sin_f), TOL)
@@ -221,11 +217,11 @@ def ode_right_hand_side(
         den_a = np.sign(sin_a) * max(abs(sin_a), TOL)
 
     # Unit vectors of phase directions (angles are w.r.t. vertical axis).
-    e_c: NDArray = np.array([sin_c, cos_c], dtype=DTYPE)  # core streamwise
-    e_a: NDArray = np.array([sin_a, cos_a], dtype=DTYPE)  # air streamwise
+    e_c: NDArray[DTYPE] = np.array([sin_c, cos_c], dtype=DTYPE)  # core streamwise
+    e_a: NDArray[DTYPE] = np.array([sin_a, cos_a], dtype=DTYPE)  # air streamwise
 
-    n_c: NDArray = rotate90_cw(e_c)  # core radial (90° clockwise)
-    core_dotprod: float = np.dot(e_c, n_c)
+    n_c: NDArray[DTYPE] = rotate90_cw(e_c)  # core radial (90° clockwise)
+    core_dotprod: DTYPE = np.dot(e_c, n_c)
     assert np.isclose(core_dotprod, 0.0, atol=1e-6), (
         f"Core vectors {e_c=}, {n_c=} must be orthogonal but {core_dotprod=} != 0"
     )
@@ -234,31 +230,32 @@ def ode_right_hand_side(
     U_ca: NDArray = (yc.Ua * e_a) - (yc.Uc * e_c)
 
     # --- MASS AND MOMENTUM TRANSFER --- #
-    # TODO: Mathematica notebook used abs() for a number of calculations, article didn't
+
+    # TODO: Mathematica notebook used abs for a number of calculations, article didn't.
     # Double-check where they're useful vs. where the sign matters.
 
-    # Eq. 15 mass flow surroundings -> jet (air entrainment)
+    # Eq. 15 mass flow surroundings -> jet (air entrainment).
     m_sur2f = alpha * np.pi * rho_a * yc.Ua * yc.Df
     assert m_sur2f >= 0.0, f"{m_sur2f=} must be >= 0 (air is entrained)"
 
-    # Eq. 16 mass flow air -> surroundings
+    # Eq. 16 mass flow air -> surroundings.
     m_a2sur = np.pi * rho_a * yc.Df * yc.Ua * abs(np.sin(yc.theta_f - yc.theta_a))
     assert m_a2sur >= 0.0, f"{m_a2sur=} must be >= 0 (air leaves the stream)"
 
-    # Eq. 18 momentum exchange air -> surroundings
+    # Eq. 18 momentum exchange air -> surroundings.
     f_a2sur = m_a2sur * yc.Ua * np.cos(yc.theta_f - yc.theta_a)
     f_ra2sur = m_a2sur * yc.Ua * abs(np.sin(yc.theta_f - yc.theta_a))
     assert f_a2sur >= 0.0, f"{f_a2sur=} (momentum air->spray streamwise) must be >= 0"
     assert f_ra2sur >= 0.0, f"{f_ra2sur=} (momentum air->spray radial) must be >= 0"
 
-    # Eq. 20 drag momentum
+    # Eq. 20 drag momentum.
     f_c2a_common = pi_2 * F * yc.Dc * np.linalg.norm(U_ca)
     f_c2a: float = f_c2a_common * abs(np.dot(U_ca, e_c))
     f_rc2a: float = sin_a * f_c2a_common * abs(np.dot(U_ca, n_c))
     assert f_c2a >= 0.0, f"{f_c2a=} (momentum core->air streamwise) must be >= 0"
     assert f_rc2a >= 0.0, f"{f_rc2a=} (momentum core->air radial) must be >= 0"
 
-    # Eq. 22 liquid surface break-up efficiency factor
+    # Eq. 22 liquid surface break-up efficiency factor.
     Delta = yc.Df  # radial integral scale of the jet, assumed to be core diameter
     epsilon: float = 0.012 * (s / (Delta * np.sqrt(params.weber)))
 
@@ -317,7 +314,9 @@ def ode_right_hand_side(
 
         if params._is_post_breakup:
             # Core does not exist anymore.
-            m_c2s[i] = f_c2s[i] = f_rc2s[i] = 0.0
+            m_c2s[i] = 0.0
+            f_c2s[i] = 0.0
+            f_rc2s[i] = 0.0
         else:
             # Eq. 23 mass-averaged radial velocity of drops relative to core surface.
             u_rc2s[i] = 0.05 * yc.Us[i]
@@ -373,10 +372,10 @@ def ode_right_hand_side(
 
     # The core phase only exists until s_brk.
     if params._is_post_breakup:
-        dyds.Uc = np.float32(0.0)
-        dyds.Dc = np.float32(0.0)
+        dyds.Uc = DTYPE(0.0)
+        dyds.Dc = DTYPE(0.0)
     elif s < params.s_brk:
-        # Eq 1, 2 core phass mass and momentum conservation
+        # Eq 1, 2 core phass mass and momentum conservation.
         dyds.Uc = -(np.pi * yc.Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
             np.pi * yc.Dc**2 * yc.Uc * rho_w
         )
@@ -407,7 +406,7 @@ def ode_right_hand_side(
         * (2 * yc.Ua * m_a2sur - 2 * yc.Ua * m_sur2f - f_a2sur + f_c2a + f_s2a_total)
         / (np.pi * yc.Da * yc.Ua**2 * rho_a)
     )
-    assert dyds.Da >= -TOL, f"{dyds.Da=} Air diameter can't decrease"
+    assert dyds.Da >= -TOL, f"{dyds.Da=} air phase diameter can't decrease."
 
     # FIX: My version on top, Andres' from 25.09.25 6:58 CET below
     dyds.theta_a = (
@@ -469,7 +468,7 @@ def ode_right_hand_side(
         - 4 * f_a2sur * rho_a * rho_w
         - 4 * f_s2sur_total * rho_a * rho_w
     ) / (2 * np.pi * yc.Df * yc.Uf**2 * rho_a * yc.rho_f**2 * rho_w)
-    assert dyds.Df >= -TOL, f"{dyds.Df=} m Stream diameter can't decrease"
+    assert dyds.Df >= -TOL, f"{dyds.Df=} m stream diameter can't decrease."
 
     dyds.theta_f = -(
         np.pi * yc.Df**2 * g * rho_a * sin_f
@@ -487,16 +486,16 @@ def ode_right_hand_side(
         )
         / (np.pi * yc.Df**2 * yc.Uf * rho_a * rho_w)
     )
-    assert dyds.rho_f <= TOL, f"{dyds.rho_f=:g} kg/m³/s Stream can't gain density"
+    assert dyds.rho_f <= TOL, f"{dyds.rho_f=:g} kg/m³/s stream can't gain density."
 
     # Eq. 13 & 14 Cartesian coordinates of the trajectory.
     # NOTE: Typo in the original article: cos and sin must be swapped, since theta_f is
     # measured relative to vertical axis.
     dyds.x = sin_f
     dyds.y = cos_f
-    assert dyds.x >= 0, f"{dyds.x=} Stream can't move backwards"
+    assert dyds.x >= 0, f"{dyds.x=} stream can't move backwards."
     if s < params.s_brk:
-        assert dyds.y >= 0.0, f"{dyds.y=} Stream can't fall before core break-up"
+        assert dyds.y >= 0.0, f"{dyds.y=} stream can't fall before core break-up"
 
     # DEBUG TOOL: Bypass potentially erroneous equations by overwriting their results
     if bypass:
@@ -512,7 +511,7 @@ def ode_right_hand_side(
                     + f" because it's not a member of {type(dyds).__name__}"
                 )
 
-    # Record all variables with Tracer if in debug mode.
+    # Record all variables with Tracer if available.
     # Angles will be printed in degrees for readability.
     if tracer is not None:
         scalars = {
