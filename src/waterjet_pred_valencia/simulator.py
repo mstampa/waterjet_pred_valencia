@@ -190,7 +190,7 @@ def ode_right_hand_side(
     """
     # Convert state vector to dataclass for better readability and type safety.
     yc = JetState.from_array(y)
-    debug_printout(s, yc, params)
+    print_debug_state(s, yc, params)
     yc.assert_physically_plausible(params)
     dyds = JetState()
 
@@ -490,7 +490,7 @@ def ode_right_hand_side(
     assert dyds.rho_f <= TOL, f"{dyds.rho_f=:g} kg/m³/s Stream can't gain density"
 
     # Eq. 13 & 14 Cartesian coordinates of the trajectory.
-    # NOTE: Typo in the original article: cos and sin must be swapped,  since theta_f is
+    # NOTE: Typo in the original article: cos and sin must be swapped, since theta_f is
     # measured relative to vertical axis.
     dyds.x = sin_f
     dyds.y = cos_f
@@ -567,7 +567,7 @@ def ode_right_hand_side(
 
 
 def rotate90_cw(v: NDArray[np.floating]) -> NDArray[DTYPE]:
-    """Roate 2D vector by 90° clockwise.
+    """Rotate 2D vector by 90° clockwise.
 
     Args:
         v: (2,) vector.
@@ -579,13 +579,13 @@ def rotate90_cw(v: NDArray[np.floating]) -> NDArray[DTYPE]:
     return np.array([y, -x], dtype=DTYPE)
 
 
-def debug_printout(s: float, state: JetState, params: SimParams) -> None:
-    """Print the full state vector.
+def print_debug_state(s: float, state: JetState, params: SimParams) -> None:
+    """Print the full state vector using the debug logger.
 
     Args:
-        s: position along streamwise axis
-        state: the JetState at s
-        params: the simulation parameters
+        s: position along streamwise axis.
+        state: the JetState at s.
+        params: the simulation parameters.
     """
     theta_c: DTYPE = state.theta_f
 

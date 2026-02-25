@@ -7,10 +7,10 @@ Example plots were generated with some of the computations bypassed.
 
 ---
 
-This is a Python module for simulating the trajectories of "fire streams", i.e., large water jets shot from fire monitors.
+This project simulates the trajectories of "fire streams", i.e., large water jets shot from fire monitors.
 The backbone is a 1D Eulerian analytical model reproduced from this publication:
 
-```bibtex
+```text
 @article{valencia_model_22,
   title = {A Model for Predicting the Trajectory and Structure of Firefighting Hose Streams},
   author = {Valencia, Andres and Zheng, Yinghui and Marshall, André W.},
@@ -59,7 +59,7 @@ pip install -e .  # -e = editable
 
 ### Usage
 
-User has to supply:
+The user has to provide:
 
 * `theta_0`: injection angle above the horizon, 0–90°
 * `U_0`: injection speed [m/s]
