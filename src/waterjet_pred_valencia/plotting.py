@@ -172,10 +172,21 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     )
     output_file(path_str, title="Fire stream simulation")
 
+    x_vals = np.asarray(source.data["x"], dtype=float)
+    y_vals = np.asarray(source.data["y"], dtype=float)
+    finite_x = x_vals[np.isfinite(x_vals)]
+    finite_y = y_vals[np.isfinite(y_vals)]
+    x_max = float(np.max(finite_x)) if finite_x.size > 0 else 0.0
+    y_max = float(np.max(finite_y)) if finite_y.size > 0 else 0.0
+    x_margin = float(1)
+    y_margin = float(1)
+
     p_traj = figure(
         title="Fire stream trajectory",
         x_axis_label="x / m",
         y_axis_label="y / m",
+        x_range=Range1d(0.0, x_max + x_margin),
+        y_range=Range1d(0.0, y_max + y_margin),
         match_aspect=True,
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
