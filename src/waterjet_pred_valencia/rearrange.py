@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 
 """Helper script to rearrange the equations from the research article into the
-dy/ds = f(s, y) form expected by the SciPi ODE solver (solve_ivp).
+dy/ds = f(s, y) form expected by the SciPy ODE solver (solve_ivp).
 Manual labor is reduced to expanding the derivates with product and chain rules.
 """
 
-from scipy.integrate._ivp.ivp import OdeResult
 from sympy import Derivative, cos, factor, pi, simplify, sin, solve, symbols
 from sympy.abc import g, s
 
 
 # TODO: Validate printouts after completing switch from flat NDArray to JetState
-def print_solution(name: str, deriv: Derivative, sol: OdeResult) -> None:
+def print_solution(name: str, deriv: Derivative, sol) -> None:
     """Convert solution printout to code that can be copy-pasted into `simulator.py`.
 
-    May require some manual clean-up.
+    Note: Some manual post clean-up may still be required.
 
     Args:
         name: Name of the variable for which the derivative solution should be printed.
         deriv: SymPy symbol of the derivative.
-        sol: ODE solution object.
+        sol: Solution produced by sympy.solve().
     """
 
     expr = factor(simplify(sol[deriv]))
