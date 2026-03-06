@@ -57,7 +57,7 @@ def run_simulation(args: Namespace) -> None:
     logger.info("Starting simulation...")
     start_time = time()
     try:
-        sol, idx = simulate(
+        result = simulate(
             args.speed,
             args.angle,
             args.nozzle,
@@ -69,7 +69,8 @@ def run_simulation(args: Namespace) -> None:
         )
 
         logger.info(f"Plotting results and saving to {args.output}...")
-        plot_solution(sol, idx, args.output)
+        assert result.sol is not None
+        plot_solution(result.sol, result.state_idx, args.output)
 
     except Exception as e:
         logger.error(f"An error occured: {e}")

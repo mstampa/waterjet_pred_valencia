@@ -14,9 +14,10 @@ Parameter "max_step" can be adjusted to trade accuracy for performance.
 """
 
 import logging
+from dataclasses import dataclass
 from functools import partial
 from sys import exit
-from typing import Dict, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -42,6 +43,35 @@ from .tracer import Tracer
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
+class SimulationResult:
+    """Structured simulation output for success and failure handling.
+
+    Attributes:
+        status: Execution outcome ("completed" or "failed").
+        state_idx: Mapping of state variable names to positions in state vectors.
+        sol: ODE solver output, available on successful runs.
+        error: Captured exception, available on failed runs.
+    """
+
+    status: Literal["completed", "failed"]
+    state_idx: Dict[str, int]
+    sol: Optional[OdeResult] = None
+    error: Optional[Exception] = None
+
+
+def get_state_index_map() -> Dict[str, int]:
+    """Build a state-name -> flat-index map for plotting and post-processing."""
+
+    idx: Dict[str, int] = {}
+    for name in JetState.BASE_VARS:
+        idx[name] = JetState.get_idx(name)
+    for name in JetState.SPRAY_VARS:
+        for i in range(num_drop_classes):
+            idx[f"{name}_{i}"] = JetState.get_idx(name, i)
+    return idx
+
+
 def simulate(
     injection_speed: float,
     injection_angle_deg: float,
@@ -52,7 +82,7 @@ def simulate(
     debug: bool = False,
     bypass: Optional[Dict[str, float]] = None,
     tracer: Optional[Tracer] = None,
-) -> OdeResult:
+) -> SimulationResult:
     """Simulate a fire stream trajectory.
 
     Args:
@@ -69,7 +99,7 @@ def simulate(
         tracer: Records variables (not only state vector) per simulation step.
 
     Returns:
-        sol: ODE solution object containing the predicted trajectory.
+        Structured simulation output including solver results and index map.
 
     Raises:
         AssertionError: if a physical plausibility check failed.
@@ -134,6 +164,7 @@ def simulate(
     ev_mass.direction = -1  # pyright: ignore
 
     # This is where da number magic happens!
+    state_idx: Dict[str, int] = get_state_index_map()
     sol: OdeResult
     try:
         sol = solve_ivp(
@@ -156,7 +187,7 @@ def simulate(
         else:
             raise e
 
-    return sol
+    return SimulationResult(status="completed", state_idx=state_idx, sol=sol)
 
 
 def ode_right_hand_side(
