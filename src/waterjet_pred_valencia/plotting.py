@@ -2,11 +2,11 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Iterable, Tuple
 
 import numpy as np
-from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, Range1d
+from bokeh.layouts import column, row
+from bokeh.models import AdaptiveTicker, ColumnDataSource, LinearAxis, Range1d
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
 from pandas import DataFrame
@@ -16,6 +16,17 @@ from .jet_state import JetState
 from .parameters import num_drop_classes
 
 logger = logging.getLogger(__name__)
+
+# Fixed colors for consistent phase coloring across all plots.
+PHASE_COLORS: Dict[str, str] = {
+    "core": Colorblind5[0],
+    "air": Colorblind5[1],
+    "stream": Colorblind5[3],
+}
+SPRAY_COLORS: Tuple[str, ...] = tuple(Blues8[i] for i in range(num_drop_classes))
+
+DEFAULT_TOOLS = "pan,wheel_zoom,box_zoom,reset,save"
+DESIRED_MAJOR_TICKS = 10
 
 
 def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None:
@@ -156,16 +167,19 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         x_axis_label="x / m",
         y_axis_label="y / m",
         match_aspect=True,
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
     )
     p_traj.line(
         "x",
         "y",
         source=source,
         line_width=2,
-        color="navy",
+        color=PHASE_COLORS["stream"],
         legend_label="Trajectory",
     )
     _add_stream_width_patch(p_traj, source)
+    _configure_linear_grid_density([p_traj])
 
     x_axis_label = "Streamwise position s / m"
     x_margin: float = 1.0
@@ -176,13 +190,15 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="Speed / m/s",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
     )
     p_speeds.line(
         "s",
         "Uc",
         source=source,
         line_width=2,
-        line_color=Colorblind5[0],
+        line_color=PHASE_COLORS["core"],
         legend_label="Uc",
     )
     p_speeds.line(
@@ -190,7 +206,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         "Ua",
         source=source,
         line_width=2,
-        line_color=Colorblind5[1],
+        line_color=PHASE_COLORS["air"],
         legend_label="Ua",
     )
     p_speeds.line(
@@ -198,22 +214,25 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         "Uf",
         source=source,
         line_width=2,
-        line_color=Colorblind5[2],
+        line_color=PHASE_COLORS["stream"],
         legend_label="Uf",
     )
+    _configure_linear_grid_density([p_speeds])
 
     p_diameters = figure(
         title="Phase diameters",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="diameter / m",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
     )
     p_diameters.line(
         "s",
         "Dc",
         source=source,
         line_width=2,
-        line_color=Colorblind5[0],
+        line_color=PHASE_COLORS["core"],
         legend_label="Dc",
     )
     p_diameters.line(
@@ -221,7 +240,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         "Da",
         source=source,
         line_width=2,
-        line_color=Colorblind5[1],
+        line_color=PHASE_COLORS["air"],
         legend_label="Da",
     )
     p_diameters.line(
@@ -229,22 +248,25 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         "Df",
         source=source,
         line_width=2,
-        line_color=Colorblind5[2],
+        line_color=PHASE_COLORS["stream"],
         legend_label="Df",
     )
+    _configure_linear_grid_density([p_diameters])
 
     p_angles = figure(
         title="Phase angles (above horizon)",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="Angle / deg",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
     )
     p_angles.line(
         "s",
         "theta_a_deg",
         source=source,
         line_width=2,
-        line_color=Colorblind5[0],
+        line_color=PHASE_COLORS["air"],
         legend_label="theta_a",
     )
     p_angles.line(
@@ -252,17 +274,20 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         "theta_f_deg",
         source=source,
         line_width=2,
-        line_color=Colorblind5[1],
+        line_color=PHASE_COLORS["stream"],
         legend_label="theta_f",
     )
+    _configure_linear_grid_density([p_angles])
 
     p_nd = figure(
-        title="Drop count",
+        title="Drop count + stream density",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="ND / drops/s",
         y_axis_type="log",
         y_range=Range1d(0.0, 1e7),
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
     )
 
     for i in range(num_drop_classes):
@@ -271,28 +296,30 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             f"ND_{i}",
             source=source,
             line_width=2,
-            line_color=Blues8[i],
+            line_color=SPRAY_COLORS[i],
             legend_label=f"ND_{i}",
         )
 
-    p_rho = figure(
-        title="Stream density",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Density / kg/m³",
-        y_range=Range1d(0, 1000),
+    p_nd.extra_y_ranges = {"rho_axis": Range1d(start=0.0, end=1000.0)}
+    p_nd.add_layout(
+        LinearAxis(y_range_name="rho_axis", axis_label="Density / kg/m³"),
+        "right",
     )
-    p_rho.line(
+    p_nd.line(
         "s",
         "rho_f",
         source=source,
         line_width=2,
-        line_color="purple",
+        line_color=PHASE_COLORS["stream"],
+        y_range_name="rho_axis",
         legend_label="rho_f",
     )
+    _configure_linear_grid_density([p_nd])
 
-    plot_layout = gridplot(
-        children=[[p_traj], [p_speeds, p_diameters], [p_angles, p_nd], [p_rho]],
+    plot_layout = column(
+        p_traj,
+        row(p_speeds, p_diameters, sizing_mode="stretch_width"),
+        row(p_angles, p_nd, sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
     )
 
@@ -346,4 +373,20 @@ def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
         legend_label="Stream Width",
     )
     logger.debug(f"Added stream width patch with {x_patch.shape[0]} elements")
+    return
+
+
+def _configure_linear_grid_density(figures: Iterable) -> None:
+    """Increase major gridline density on linear axes.
+
+    Args:
+        figures: Iterable of bokeh figures to configure.
+    """
+
+    for fig in figures:
+        for axis in fig.xaxis:
+            axis.ticker = AdaptiveTicker(desired_num_ticks=DESIRED_MAJOR_TICKS)
+        for axis in fig.yaxis:
+            if isinstance(axis.ticker, AdaptiveTicker):
+                axis.ticker = AdaptiveTicker(desired_num_ticks=DESIRED_MAJOR_TICKS)
     return
