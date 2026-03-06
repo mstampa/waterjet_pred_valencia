@@ -26,7 +26,6 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         state_idx: Mapping of variable names to indices in sol.y.
         path: Path to export the plot to (html).
     """
-
     logger.info("Plotting OdeResult...")
     source, s_end = _build_source_from_solution(sol, state_idx)
     _save_plot(source=source, s_end=s_end, path=path)
@@ -40,8 +39,7 @@ def plot_trace(trace_df: DataFrame, path: Path) -> None:
         trace_df: Wide trace dataframe produced by Tracer.to_wide_dataframe().
         path: Path to export the plot to (html).
     """
-
-    logger.info("Plotting trace...")
+    logger.info("Plotting traced partial results...")
     source, s_end = _build_source_from_trace(trace_df)
     _save_plot(source=source, s_end=s_end, path=path)
     return
@@ -144,14 +142,14 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         path: Output path for the generated html file.
     """
 
-    logger.info(f"Exporting plot to {path}...")
+    logger.info(f"Saving plot to {path}...")
+    logger.info(f"Maximum s-value: {s_end} m")
+
     path_str = str(path)
     assert path_str.endswith("html"), (
         f"Path suffix must be .html, but is {path.suffix}."
     )
     output_file(path_str, title="Fire stream simulation")
-
-    x_margin: float = 1.0
 
     p_traj = figure(
         title="Fire stream trajectory",
@@ -167,10 +165,10 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         color="navy",
         legend_label="Trajectory",
     )
-
     _add_stream_width_patch(p_traj, source)
 
     x_axis_label = "Streamwise position s / m"
+    x_margin: float = 1.0
     x_range = Range1d(0, s_end + x_margin)
 
     p_speeds = figure(
@@ -266,6 +264,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         y_axis_type="log",
         y_range=Range1d(0.0, 1e7),
     )
+
     for i in range(num_drop_classes):
         p_nd.line(
             "s",
@@ -294,11 +293,11 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
 
     plot_layout = gridplot(
         children=[[p_traj], [p_speeds, p_diameters], [p_angles, p_nd], [p_rho]],
-        sizing_mode="stretch_width",  # pyright: ignore[reportArgumentType]
+        sizing_mode="stretch_width",
     )
 
     save(plot_layout)
-    logger.info(f"Plot saved to {path_str}")
+    logger.info("Plot saved.")
     return
 
 
@@ -346,4 +345,5 @@ def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
         line_width=1,
         legend_label="Stream Width",
     )
+    logger.debug(f"Added stream width patch with {x_patch.shape[0]} elements")
     return

@@ -146,10 +146,12 @@ class Tracer:
         Args:
             path: Where to save the file to (must have .csv extension).
         """
-        logger.info(f"Exporting trace to {str(path)}...")
-        assert not path.exists(), f"{str(path)} already exists!"
+        logger.info(f"Saving trace to {path}...")
         assert path.suffix == ".csv", "File extension must be '.csv' !"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            logger.warning(f"Trace file already exists and will be overwritten: {path}")
         df: DataFrame = self.to_wide_dataframe()
         df.to_csv(str(path), index=False, float_format=f"%.{self.decimals}f")
-        logger.info("Export successful.")
+        logger.info("Trace saved.")
         return

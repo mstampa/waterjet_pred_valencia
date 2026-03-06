@@ -6,8 +6,10 @@ import logging
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from tempfile import gettempdir
-from time import time
+from time import perf_counter
 from typing import Dict, Optional
+
+from pandas import DataFrame
 
 from .logging import configure_logging
 from .plotting import plot_solution, plot_trace
@@ -23,12 +25,17 @@ def main():
     configure_logging()
     args: Namespace = get_arguments()
 
-    # Show input arguments.
+    logger.info("CLI started with the following arguments:")
     for arg in vars(args):
-        logger.info(f"{arg} = {getattr(args, arg)}")
+        logger.info(f"    {arg} = {getattr(args, arg)}")
 
-    run_simulation(args)
-    return
+    try:
+        run_simulation(args)
+    except Exception:
+        logger.exception("Simulation run failed.")
+        return 1
+
+    return 0
 
 
 def run_simulation(args: Namespace) -> None:
@@ -47,7 +54,9 @@ def run_simulation(args: Namespace) -> None:
     tracer = Tracer()
 
     logger.info("Starting simulation...")
-    start_time = time()
+    start_time = perf_counter()
+    failed_error: Optional[Exception] = None
+    result = None
     try:
         result = simulate(
             injection_speed=args.speed,
@@ -60,19 +69,28 @@ def run_simulation(args: Namespace) -> None:
             tracer=tracer,
         )
 
-        logger.info(f"Plotting results and saving to {args.output}...")
-        assert result.sol is not None
-        plot_solution(result.sol, result.state_idx, args.output)
-
     except Exception as e:
-        logger.error(f"An error occured: {e}")
+        failed_error = e
+        logger.error("An error occured and the simulation crashed.")
     finally:
-        logger.info(f"Execution time: {time() - start_time:.6f} sec.")
+        logger.info(f"Execution time: {perf_counter() - start_time:.6f} sec.")
+
+        # Plot and save.
         path_trace: Path = Path(args.trace)
-        plot_trace(tracer.to_wide_dataframe(), args.output)
+        trace_df: DataFrame = tracer.to_wide_dataframe()
+        if failed_error is None:
+            assert result is not None
+            assert result.sol is not None
+            plot_solution(result.sol, result.state_idx, args.output)
+        elif not trace_df.empty:
+            plot_trace(trace_df, args.output)
+        else:
+            logger.warning("Simulation failed before any trace rows were recorded.")
         tracer.to_csv(path_trace)
 
-    logger.info("All done!")
+    if failed_error is not None:
+        raise failed_error
+
     return
 
 

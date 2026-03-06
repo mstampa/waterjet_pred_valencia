@@ -7,6 +7,7 @@ import sys
 DEBUG_MODULES = [
     "waterjet_pred_valencia.cli",
     "waterjet_pred_valencia.logging",
+    "waterjet_pred_valencia.plotting",
     "waterjet_pred_valencia.simulator",
     "waterjet_pred_valencia.tracer",
 ]
