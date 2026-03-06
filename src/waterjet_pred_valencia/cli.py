@@ -9,24 +9,19 @@ from tempfile import gettempdir
 from time import time
 from typing import Dict, Optional
 
-import numpy as np
-
+from .logging import configure_logging
 from .plotting import plot_solution
 from .simulator import simulate
+from .tracer import Tracer
 
-logger = logging.getLogger("cli")
+logger = logging.getLogger("waterjet_pred_valencia.cli")
 
 
 def main():
     """Entrypoint."""
 
+    configure_logging()
     args: Namespace = get_arguments()
-
-    # Configure logging.
-    log_fmt = "[{asctime}] [{levelname}] [{name}] {message}"
-    logging.basicConfig(format=log_fmt, style="{")
-    logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
-    np.set_printoptions(precision=4)
 
     # Show input arguments.
     for arg in vars(args):
@@ -40,27 +35,24 @@ def run_simulation(args: Namespace) -> None:
     """Run a fire stream simulation with the provided arguments.
 
     Args:
-        argparse.Namespace: Parsed CLI arguments
+        argparse.Namespace: Parsed CLI arguments.
     """
 
+    # NOTE: Use bypass to define manual overrides for dyds computations. Example:
+    # bypass = {"Uc": -0.01, "theta_s": 0.001}
     bypass: Optional[Dict[str, float]] = None
-    if args.debug:
-        from .tracer import Tracer
 
-        tracer = Tracer()
-
-        # NOTE: Use bypass to define manual overrides for dyds computations, e.g.:
-        # bypass = {"Uc": -0.01, "theta_s": 0.001}
-    else:
-        tracer = None
+    # Tracer records the state of most variables at regular intervals.
+    # The recording is used to generate plots of both successful and failed simulations.
+    tracer = Tracer()
 
     logger.info("Starting simulation...")
     start_time = time()
     try:
         result = simulate(
-            args.speed,
-            args.angle,
-            args.nozzle,
+            injection_speed=args.speed,
+            injection_angle_deg=args.angle,
+            nozzle_diameter=args.nozzle,
             s_span=(0.0, args.span),
             max_step=args.max_step,
             debug=args.debug,
@@ -76,11 +68,8 @@ def run_simulation(args: Namespace) -> None:
         logger.error(f"An error occured: {e}")
     finally:
         logger.info(f"Execution time: {time() - start_time:.6f} sec.")
-
-        if tracer is not None:
-            path_trace = Path(args.trace)
-            logger.info(f"Saving trace to {str(path_trace)}")
-            tracer.to_csv(path_trace)
+        path_trace: Path = Path(args.trace)
+        tracer.to_csv(path_trace)
 
     logger.info("All done!")
     return
@@ -149,13 +138,15 @@ def get_arguments() -> Namespace:
         type=float,
         default=1e-3,
     )
+
+    # TODO: Add timestamps to output paths.
     parser.add_argument(
         "-o",
         "--output",
         help="Path to save the generated plots to. Default: %(default)s.",
         metavar="path",
         type=Path,
-        default=Path(gettempdir()) / "valencia.html",
+        default=Path(gettempdir()) / "simulation_plot.html",
     )
     parser.add_argument(
         "--trace",
@@ -163,7 +154,7 @@ def get_arguments() -> Namespace:
         Default: %(default)s.",
         metavar="path",
         type=Path,
-        default=Path(gettempdir()) / "trace.csv",
+        default=Path(gettempdir()) / "simulation_trace.csv",
     )
 
     return parser.parse_args()

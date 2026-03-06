@@ -1,5 +1,6 @@
 """Defines Tracer class and helpers."""
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -8,6 +9,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pandas import DataFrame
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,7 +30,7 @@ class Tracer:
       - output as CSV.
     """
 
-    def __init__(self, s_stride: float = 0.01, decimals: int = 6):
+    def __init__(self, s_stride: float = 0.05, decimals: int = 6):
         """Initialize Tracer.
 
         Args:
@@ -38,6 +41,7 @@ class Tracer:
         self.s_stride = float(s_stride)
         self.decimals = int(decimals)
         self._next_s_mark: Optional[float] = None  # Set on first snapshot.
+        logger.info(f"Tracer initialized with stride={s_stride} m, {decimals=}.")
         return
 
     def _should_record(self, s: float) -> bool:
@@ -73,7 +77,7 @@ class Tracer:
         s: float,
         scalars: Dict[str, float],
         vectors: Dict[str, NDArray[np.floating]],
-    ):
+    ) -> None:
         """Append a 'wide' row if s advanced past the next stride mark.
 
         Args:
@@ -142,9 +146,10 @@ class Tracer:
         Args:
             path: Where to save the file to (must have .csv extension).
         """
-        assert not path.exists()
-        assert path.is_file()
-        assert path.suffix == ".csv"
+        logger.info(f"Exporting trace to {str(path)}...")
+        assert not path.exists(), f"{str(path)} already exists!"
+        assert path.suffix == ".csv", "File extension must be '.csv' !"
         df: DataFrame = self.to_wide_dataframe()
         df.to_csv(str(path), index=False, float_format=f"%.{self.decimals}f")
+        logger.info("Export successful.")
         return

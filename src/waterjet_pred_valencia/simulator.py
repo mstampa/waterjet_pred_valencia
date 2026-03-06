@@ -546,6 +546,8 @@ def ode_right_hand_side(
     # Angles will be printed in degrees for readability.
     if tracer is not None:
         scalars = {
+            "x": yc.x,
+            "y": yc.y,
             "theta_f_deg": np.rad2deg(yc.theta_f),
             "theta_a_deg": np.rad2deg(yc.theta_a),
             "Uc": yc.Uc,
