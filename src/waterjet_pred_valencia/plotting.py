@@ -6,7 +6,7 @@ from typing import Dict, Iterable, Tuple
 
 import numpy as np
 from bokeh.layouts import column, row
-from bokeh.models import AdaptiveTicker, ColumnDataSource, LinearAxis, Range1d
+from bokeh.models import AdaptiveTicker, ColumnDataSource, Range1d
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
 from pandas import DataFrame
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Fixed colors for consistent phase coloring across all plots.
 PHASE_COLORS: Dict[str, str] = {
-    "core": Colorblind5[0],
+    "core": Colorblind5[2],
     "air": Colorblind5[1],
     "stream": Colorblind5[3],
 }
@@ -280,7 +280,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     _configure_linear_grid_density([p_angles])
 
     p_nd = figure(
-        title="Drop count + stream density",
+        title="Drop count",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="ND / drops/s",
@@ -300,26 +300,31 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             legend_label=f"ND_{i}",
         )
 
-    p_nd.extra_y_ranges = {"rho_axis": Range1d(start=0.0, end=1000.0)}
-    p_nd.add_layout(
-        LinearAxis(y_range_name="rho_axis", axis_label="Density / kg/m³"),
-        "right",
+    p_rho = figure(
+        title="Stream density",
+        x_axis_label=x_axis_label,
+        x_range=x_range,
+        y_axis_label="Density / kg/m³",
+        y_range=Range1d(0.0, 1000.0),
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
+        active_scroll="wheel_zoom",
     )
-    p_nd.line(
+    p_rho.line(
         "s",
         "rho_f",
         source=source,
         line_width=2,
         line_color=PHASE_COLORS["stream"],
-        y_range_name="rho_axis",
         legend_label="rho_f",
     )
-    _configure_linear_grid_density([p_nd])
+    _configure_linear_grid_density([p_rho])
 
     plot_layout = column(
         p_traj,
         row(p_speeds, p_diameters, sizing_mode="stretch_width"),
         row(p_angles, p_nd, sizing_mode="stretch_width"),
+        p_rho,
         sizing_mode="stretch_width",
     )
 
