@@ -10,7 +10,7 @@ from time import time
 from typing import Dict, Optional
 
 from .logging import configure_logging
-from .plotting import plot_solution
+from .plotting import plot_solution, plot_trace
 from .simulator import simulate
 from .tracer import Tracer
 
@@ -69,6 +69,7 @@ def run_simulation(args: Namespace) -> None:
     finally:
         logger.info(f"Execution time: {time() - start_time:.6f} sec.")
         path_trace: Path = Path(args.trace)
+        plot_trace(tracer.to_wide_dataframe(), args.output)
         tracer.to_csv(path_trace)
 
     logger.info("All done!")

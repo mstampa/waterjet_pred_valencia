@@ -6,6 +6,7 @@ import sys
 # List of modules which should use DEBUG instead of the default INFO log level.
 DEBUG_MODULES = [
     "waterjet_pred_valencia.cli",
+    "waterjet_pred_valencia.logging",
     "waterjet_pred_valencia.simulator",
     "waterjet_pred_valencia.tracer",
 ]

@@ -1,61 +1,158 @@
-"""Uses 'bokeh' to plot simulation results and export as interactive HTML."""
+"""Uses bokeh to plot simulation results and export interactive HTML."""
 
+import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
-from bokeh.layouts import layout
+from bokeh.layouts import gridplot
 from bokeh.models import ColumnDataSource, Range1d
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
-from numpy.typing import NDArray
+from pandas import DataFrame
 from scipy.integrate._ivp.ivp import OdeResult
 
 from .jet_state import JetState
+from .parameters import num_drop_classes
+
+logger = logging.getLogger(__name__)
 
 
 def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None:
-    """Plot trajectory and evolution of variables over the streamwise axis 's'.
+    """Plot trajectory and variable evolution based on a successful ODE result.
 
     Args:
         sol: ODE solution object from solve_ivp.
-        state_idx: Mapping of variable names to indices in sol.y .
+        state_idx: Mapping of variable names to indices in sol.y.
         path: Path to export the plot to (html).
     """
 
-    path_str: str = str(path)
-    assert path_str.endswith("html"), "Plot path must be an HTML file."
+    logger.info("Plotting OdeResult...")
+    source, s_end = _build_source_from_solution(sol, state_idx)
+    _save_plot(source=source, s_end=s_end, path=path)
+    return
+
+
+def plot_trace(trace_df: DataFrame, path: Path) -> None:
+    """Plot trajectory and variable evolution based on traced partial data.
+
+    Args:
+        trace_df: Wide trace dataframe produced by Tracer.to_wide_dataframe().
+        path: Path to export the plot to (html).
+    """
+
+    logger.info("Plotting trace...")
+    source, s_end = _build_source_from_trace(trace_df)
+    _save_plot(source=source, s_end=s_end, path=path)
+    return
+
+
+def _build_source_from_solution(
+    sol: OdeResult, state_idx: Dict[str, int]
+) -> Tuple[ColumnDataSource, float]:
+    """Build a bokeh data source from a complete ODE solution.
+
+    Args:
+        sol: ODE solution returned by scipy.solve_ivp.
+        state_idx: Mapping of variable names to flat state vector indices.
+
+    Returns:
+        Tuple of bokeh data source and maximum plotted s-value.
+    """
+
+    # Last s value to plot (termination event or predefined simulation span).
+    s_end: float = float(sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1])
+
+    data: Dict[str, np.ndarray] = {
+        "s": sol.t,
+        "Uc": sol.y[JetState.get_idx("Uc"), :],
+        "Dc": sol.y[JetState.get_idx("Dc"), :],
+        "Ua": sol.y[JetState.get_idx("Ua"), :],
+        "Da": sol.y[JetState.get_idx("Da"), :],
+        "theta_a_deg": np.rad2deg(np.pi / 2 - sol.y[JetState.get_idx("theta_a"), :]),
+        "Uf": sol.y[JetState.get_idx("Uf"), :],
+        "Df": sol.y[JetState.get_idx("Df"), :],
+        "theta_f_deg": np.rad2deg(np.pi / 2 - sol.y[JetState.get_idx("theta_f"), :]),
+        "rho_f": sol.y[JetState.get_idx("rho_f"), :],
+        "x": sol.y[JetState.get_idx("x"), :],
+        "y": sol.y[JetState.get_idx("y"), :],
+        **{f"ND_{i}": sol.y[state_idx[f"ND_{i}"]] for i in range(num_drop_classes)},
+    }
+
+    source = ColumnDataSource(data=data)
+    return source, s_end
+
+
+def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, float]:
+    """Build a bokeh data source from traced partial simulation data.
+
+    Args:
+        trace_df: Wide dataframe created by Tracer.
+
+    Returns:
+        Tuple of bokeh data source and maximum plotted s-value.
+
+    Raises:
+        ValueError: If the dataframe is empty or has no finite s-values.
+    """
+
+    if trace_df.empty:
+        raise ValueError("Trace dataframe is empty; can not generate plot.")
+
+    n_rows = len(trace_df)
+
+    def _trace_col(name: str) -> np.ndarray:
+        if name in trace_df.columns:
+            return trace_df[name].to_numpy(dtype=float)
+        return np.full((n_rows,), np.nan, dtype=float)
+
+    s = _trace_col("s")
+    data: Dict[str, np.ndarray] = {
+        "s": s,
+        "Uc": _trace_col("Uc"),
+        "Dc": _trace_col("Dc"),
+        "Ua": _trace_col("Ua"),
+        "Da": _trace_col("Da"),
+        "theta_a_deg": 90.0 - _trace_col("theta_a_deg"),
+        "Uf": _trace_col("Uf"),
+        "Df": _trace_col("Df"),
+        "theta_f_deg": 90.0 - _trace_col("theta_f_deg"),
+        "rho_f": _trace_col("rho_f"),
+        "x": _trace_col("x"),
+        "y": _trace_col("y"),
+        **{f"ND_{i}": _trace_col(f"ND[{i}]") for i in range(num_drop_classes)},
+    }
+
+    source = ColumnDataSource(data=data)
+
+    finite_s = s[np.isfinite(s)]
+    if finite_s.size == 0:
+        raise ValueError(
+            "Trace dataframe has no finite 's' values; can not generate plot."
+        )
+
+    s_end = float(np.max(finite_s))
+    return source, s_end
+
+
+def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
+    """Render and save the standard multi-panel simulation plot.
+
+    Args:
+        source: Prepared bokeh data source with plotting columns.
+        s_end: Maximum s-value used for horizontal range limits.
+        path: Output path for the generated html file.
+    """
+
+    logger.info(f"Exporting plot to {path}...")
+    path_str = str(path)
+    assert path_str.endswith("html"), (
+        f"Path suffix must be .html, but is {path.suffix}."
+    )
     output_file(path_str, title="Fire stream simulation")
 
     x_margin: float = 1.0
-    # Last 's' value to plot (termination event or pre-defined simulation span)
-    s_end = sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1]
 
-    # Define data source for bokeh with all relevant variables.
-    source = ColumnDataSource(
-        data={
-            "s": sol.t,
-            "Uc": sol.y[JetState.get_idx("Uc"), :],
-            "Dc": sol.y[JetState.get_idx("Dc"), :],
-            "Ua": sol.y[JetState.get_idx("Ua"), :],
-            "Da": sol.y[JetState.get_idx("Da"), :],
-            "theta_a_deg": np.rad2deg(
-                np.pi / 2 - sol.y[JetState.get_idx("theta_a"), :]
-            ),
-            "Uf": sol.y[JetState.get_idx("Uf"), :],
-            "Df": sol.y[JetState.get_idx("Df"), :],
-            "theta_f_deg": np.rad2deg(
-                np.pi / 2 - sol.y[JetState.get_idx("theta_f"), :]
-            ),
-            "rho_f": sol.y[JetState.get_idx("rho_f"), :],
-            "x": sol.y[JetState.get_idx("x"), :],
-            "y": sol.y[JetState.get_idx("y"), :],
-        }
-    )
-    for i in range(5):
-        source.data[f"ND_{i}"] = sol.y[state_idx[f"ND_{i}"]]  # pyright: ignore
-
-    # Prepare main plot (water jet trajectory).
     p_traj = figure(
         title="Fire stream trajectory",
         x_axis_label="x / m",
@@ -71,38 +168,11 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         legend_label="Trajectory",
     )
 
-    # The stream has an evolving diameter. Imagine a disc around the trajectory line at
-    # a given point. To plot it properly, the disc needs to be rotated by the streams
-    # angle at each point.
-    upper = np.array([source.data["x"], source.data["y"]]).T
-    lower = np.copy(upper)
-    for i in range(np.size(sol.t)):
-        r = sol.y[state_idx["Df"], i] / 2.0
-        theta = np.pi / 2 - sol.y[JetState.get_idx("theta_f"), i]
-        sin_t, cos_t = np.sin(theta), np.cos(theta)
-        rot = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
-        upper[i, :] += np.dot(rot, np.array([0, r]))
-        lower[i, :] += np.dot(rot, np.array([0, -r]))
+    _add_stream_width_patch(p_traj, source)
 
-    # Draw diameter evolution as patch (coordinates: upper forward, lower backward)
-    x_patch: NDArray = np.concatenate([upper[:, 0], lower[::-1, 0]])
-    y_patch: NDArray = np.concatenate([upper[:, 1], lower[::-1, 1]])
-    p_traj.patch(
-        x_patch,
-        y_patch,
-        fill_alpha=0.3,
-        fill_color="skyblue",
-        line_color="gray",
-        line_width=1,
-        legend_label="Stream Width",
-    )
-
-    # --- DEBUG PLOTS --- #
-
-    x_axis_label: str = "Streamwise position s / m"
+    x_axis_label = "Streamwise position s / m"
     x_range = Range1d(0, s_end + x_margin)
 
-    # Speeds of core, air, spray, stream phase (U_c, U_a, U_s, U_f).
     p_speeds = figure(
         title="Phase speeds",
         x_axis_label=x_axis_label,
@@ -134,7 +204,6 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         legend_label="Uf",
     )
 
-    # Diameters of each phase (D_c, D_a, D_s, D_f).
     p_diameters = figure(
         title="Phase diameters",
         x_axis_label=x_axis_label,
@@ -165,9 +234,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         line_color=Colorblind5[2],
         legend_label="Df",
     )
-    p_diameters.x_range = Range1d(0, s_end + x_margin)
 
-    # Angles of each phase (theta_c, theta_a, theta_s, theta_f).
     p_angles = figure(
         title="Phase angles (above horizon)",
         x_axis_label=x_axis_label,
@@ -190,9 +257,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         line_color=Colorblind5[1],
         legend_label="theta_f",
     )
-    p_angles.x_range = Range1d(0, s_end + x_margin)
 
-    # Drop formation rate for each droplet class (ND[i]).
     p_nd = figure(
         title="Drop count",
         x_axis_label=x_axis_label,
@@ -201,7 +266,7 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         y_axis_type="log",
         y_range=Range1d(0.0, 1e7),
     )
-    for i in range(5):
+    for i in range(num_drop_classes):
         p_nd.line(
             "s",
             f"ND_{i}",
@@ -211,8 +276,6 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
             legend_label=f"ND_{i}",
         )
 
-    # Stream density (rho_f).
-    # Should go from 100% water (rho_w) to more and more air-like (rho_a).
     p_rho = figure(
         title="Stream density",
         x_axis_label=x_axis_label,
@@ -228,18 +291,59 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
         line_color="purple",
         legend_label="rho_f",
     )
-    # TODO: Plot rho_w and rho_a as horizontal reference lines.
 
-    # Place figures in a grid layout.
-    plot_layout = layout(
-        [
-            [p_traj],
-            [p_speeds, p_diameters],
-            [p_angles, p_nd],
-            [p_rho],
-        ],  # pyright: ignore
-        sizing_mode="stretch_width",
+    plot_layout = gridplot(
+        children=[[p_traj], [p_speeds, p_diameters], [p_angles, p_nd], [p_rho]],
+        sizing_mode="stretch_width",  # pyright: ignore[reportArgumentType]
     )
 
     save(plot_layout)
+    logger.info(f"Plot saved to {path_str}")
+    return
+
+
+def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
+    """Overlay stream-width patch around the trajectory line.
+
+    Args:
+        p_traj: Bokeh figure used for trajectory plotting.
+        source: Data source containing x, y, Df and theta_f_deg columns.
+    """
+
+    x_vals = np.asarray(source.data["x"], dtype=float)
+    y_vals = np.asarray(source.data["y"], dtype=float)
+    d_vals = np.asarray(source.data["Df"], dtype=float)
+    theta_deg = np.asarray(source.data["theta_f_deg"], dtype=float)
+
+    if x_vals.size == 0:
+        return
+
+    upper = np.array([x_vals, y_vals], dtype=float).T
+    lower = np.copy(upper)
+
+    valid = (
+        np.isfinite(x_vals)
+        & np.isfinite(y_vals)
+        & np.isfinite(d_vals)
+        & np.isfinite(theta_deg)
+    )
+    for i in np.where(valid)[0]:
+        r = d_vals[i] / 2.0
+        theta = np.deg2rad(theta_deg[i])
+        sin_t, cos_t = np.sin(theta), np.cos(theta)
+        rot = np.array([[cos_t, -sin_t], [sin_t, cos_t]], dtype=float)
+        upper[i, :] += np.dot(rot, np.array([0.0, r]))
+        lower[i, :] += np.dot(rot, np.array([0.0, -r]))
+
+    x_patch = np.concatenate([upper[:, 0], lower[::-1, 0]])
+    y_patch = np.concatenate([upper[:, 1], lower[::-1, 1]])
+    p_traj.patch(
+        x_patch,
+        y_patch,
+        fill_alpha=0.3,
+        fill_color="skyblue",
+        line_color="gray",
+        line_width=1,
+        legend_label="Stream Width",
+    )
     return
