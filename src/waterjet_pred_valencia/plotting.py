@@ -86,6 +86,11 @@ def _build_source_from_solution(
         "x": sol.y[JetState.get_idx("x"), :],
         "y": sol.y[JetState.get_idx("y"), :],
         **{f"ND_{i}": sol.y[state_idx[f"ND_{i}"]] for i in range(num_drop_classes)},
+        **{f"Us_{i}": sol.y[state_idx[f"Us_{i}"]] for i in range(num_drop_classes)},
+        **{
+            f"theta_s_deg_{i}": np.rad2deg(np.pi / 2 - sol.y[state_idx[f"theta_s_{i}"]])
+            for i in range(num_drop_classes)
+        },
     }
 
     source = ColumnDataSource(data=data)
@@ -130,6 +135,11 @@ def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, flo
         "x": _trace_col("x"),
         "y": _trace_col("y"),
         **{f"ND_{i}": _trace_col(f"ND[{i}]") for i in range(num_drop_classes)},
+        **{f"Us_{i}": _trace_col(f"Us[{i}]") for i in range(num_drop_classes)},
+        **{
+            f"theta_s_deg_{i}": 90.0 - _trace_col(f"theta_s_deg[{i}]")
+            for i in range(num_drop_classes)
+        },
     }
 
     source = ColumnDataSource(data=data)
@@ -217,6 +227,15 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         line_color=PHASE_COLORS["stream"],
         legend_label="Uf",
     )
+    for i in range(num_drop_classes):
+        p_speeds.line(
+            "s",
+            f"Us_{i}",
+            source=source,
+            line_width=2,
+            line_color=SPRAY_COLORS[i],
+            legend_label=f"Us{i}",
+        )
     _configure_linear_grid_density([p_speeds])
 
     p_diameters = figure(
@@ -277,6 +296,15 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         line_color=PHASE_COLORS["stream"],
         legend_label="theta_f",
     )
+    for i in range(num_drop_classes):
+        p_angles.line(
+            "s",
+            f"theta_s_deg_{i}",
+            source=source,
+            line_width=2,
+            line_color=SPRAY_COLORS[i],
+            legend_label=f"theta_s{i}",
+        )
     _configure_linear_grid_density([p_angles])
 
     p_nd = figure(
@@ -297,7 +325,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             source=source,
             line_width=2,
             line_color=SPRAY_COLORS[i],
-            legend_label=f"ND_{i}",
+            legend_label=f"ND{i}",
         )
 
     p_rho = figure(
@@ -307,6 +335,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         y_axis_label="Density / kg/m³",
         y_range=Range1d(0.0, 1000.0),
         sizing_mode="stretch_width",
+        height=300,
         tools=DEFAULT_TOOLS,
         active_scroll="wheel_zoom",
     )
