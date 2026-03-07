@@ -11,10 +11,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 # Default numpy datatype.
-# NOTE: scipy.solve_ivp() uses double precision internally, so changing this value to
+# Note: scipy.solve_ivp() uses double precision internally, so changing this value to
 # anything else won't affect performance. The type definition is kept here anyway
-# in case we switch to another ODE stack at some point (e.g., Diffrax) that does
-# support varying precision levels.
+# to allow switching to another ODE stack (e.g., Diffrax) with support for lower
+# precision levels at some point.
 DTYPE = np.float64
 
 
@@ -26,15 +26,18 @@ class SimParams:
         injection_speed (U_0): Speed of the water as it exits the nozzle [m/s].
         injection_angle_deg (theta_0): Elevation angle of the nozzle [deg].
         nozzle_diameter (D_0): Nozzle diameter [m].
-        s_brk: Core breakup point along s [m].
-        weber (We_0): Weber number [-].
+
+    Derived attributes:
+        _s_brk: Core breakup point along s [m].
+        _weber (We_0): Weber number [-].
+        _is_post_breakup: Flag to indicate if the simulation has advanced past s_brk.
     """
 
     injection_speed: float
     injection_angle_deg: float
     nozzle_diameter: float
-    s_brk: float
-    weber: float
+    _s_brk: float
+    _weber: float
     _is_post_breakup: bool
 
     def __init__(
@@ -48,8 +51,8 @@ class SimParams:
         self.injection_speed = injection_speed
         self.injection_angle_deg = injection_angle_deg
         self.nozzle_diameter = nozzle_diameter
-        self.s_brk = get_breakup_distance(nozzle_diameter)
-        self.weber = get_weber_number(injection_speed, nozzle_diameter)
+        self._s_brk = get_breakup_distance(nozzle_diameter)
+        self._weber = get_weber_number(injection_speed, nozzle_diameter)
         self._is_post_breakup = False
         return
 
@@ -144,6 +147,6 @@ def get_breakup_distance(nozzle_diameter: float) -> float:
         s_brk: Break-up location along the streamwise axis s [m].
     """
     # Note: rho_g in the paper (g for gas?) means rho_a (air) here.
-    s_brk: float = nozzle_diameter * 11 * np.sqrt(rho_w / rho_a)
+    s_brk: float = nozzle_diameter * 11.0 * np.sqrt(rho_w / rho_a)
     assert s_brk > 0.0, f"{s_brk=} must be > 0"
     return s_brk

@@ -278,7 +278,7 @@ def ode_right_hand_side(
 
     # Eq. 22 liquid surface break-up efficiency factor.
     Delta = yc.Df  # radial integral scale of the jet, assumed to be core diameter
-    epsilon: float = 0.012 * (s / (Delta * np.sqrt(params.weber)))
+    epsilon: float = 0.012 * (s / (Delta * np.sqrt(params._weber)))
 
     # Mass and momentum transfer terms for each spray class.
     sin_s, cos_s, den_s = (np.zeros(num_drop_classes, dtype=DTYPE) for _ in range(3))
@@ -394,7 +394,7 @@ def ode_right_hand_side(
     if params._is_post_breakup:
         dyds.Uc = 0.0
         dyds.Dc = 0.0
-    elif s < params.s_brk:
+    elif s < params._s_brk:
         # Eq 1, 2 core phass mass and momentum conservation.
         dyds.Uc = -(np.pi * yc.Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
             np.pi * yc.Dc**2 * yc.Uc * rho_w
@@ -520,7 +520,7 @@ def ode_right_hand_side(
     dyds.x = sin_f
     dyds.y = cos_f
     assert dyds.x >= 0, f"{dyds.x=} stream can't move backwards."
-    if s < params.s_brk:
+    if s < params._s_brk:
         assert dyds.y >= 0.0, f"{dyds.y=} stream can't fall before core break-up"
 
     # DEBUG TOOL: Bypass potentially erroneous equations by overwriting their results
