@@ -25,11 +25,11 @@ def _make_args(tmp_path: Path) -> Namespace:
         speed=30.8,
         angle=24.0,
         nozzle=0.0254,
-        span=100.0,
-        max_step=1e-3,
+        csv=tmp_path / "trace.csv",
         debug=False,
+        max_step=1e-3,
         output=tmp_path / "plot.html",
-        trace=tmp_path / "trace.csv",
+        span=100.0,
     )
 
 
@@ -53,7 +53,7 @@ def test_run_simulation_crash_still_writes_plot_and_trace(tmp_path, monkeypatch)
         cli.run_simulation(args)
 
     assert args.output.exists()
-    assert args.trace.exists()
+    assert args.csv.exists()
 
 
 def test_run_simulation_uses_solution_plot_on_success(tmp_path, monkeypatch):
@@ -63,7 +63,7 @@ def test_run_simulation_uses_solution_plot_on_success(tmp_path, monkeypatch):
     called = {"plot_solution": 0, "plot_trace": 0}
 
     def _fake_simulate(*_, **__):
-        return SimulationResult(status="completed", state_idx={}, sol=object())
+        return SimulationResult(status="completed", state_idx={}, sol=object())  # pyright: ignore
 
     def _fake_plot_solution(*_, **__):
         called["plot_solution"] += 1
@@ -79,4 +79,4 @@ def test_run_simulation_uses_solution_plot_on_success(tmp_path, monkeypatch):
 
     assert called["plot_solution"] == 1
     assert called["plot_trace"] == 0
-    assert args.trace.exists()
+    assert args.csv.exists()
