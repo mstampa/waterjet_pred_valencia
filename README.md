@@ -32,11 +32,11 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 
 - Simulates, traces, and plots evolution of trajectory, state variables, mass and momentum terms.
 - Programmed defensively: simulation aborts if a physically impossible situation (e.g., a negative diameter) is detected.
-- Debug mode enables live console output and auto-dropping into PDB on error.
+- Debug mode enables live console output and auto-dropping into the Python debugger (PDB) on error.
 - Tracing can be configured with different strides (e.g., one snapshot every 10 centimeters).
 - Trace can be exported to CSV.
-- Plots are produced as interactive HTMLs., see .
-- Plots are produced independent of the simulation terminating successfully or due to error. *Note*: Not on debugger activation though!
+- Plots are produced as interactive HTMLs, independent of the simulation terminating successfully or due to error. 
+Exception: plots are not produced when the debugger (PDB) getsa activated.
 - Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
 
 ![Example plot](doc/example_plot.png)
@@ -80,9 +80,9 @@ python -m waterjet-pred-valencia.cli
 Run the command with the `-h` or `--help` option for a detailed usage description.
 
 The most important user-supplied input parameters for running simulations are: 
-* `theta_0`: injection angle above the horizon, 0–90°
-* `U_0`: injection speed [m/s]
-* `s_end`: maximum value for s, i.e., the simulation limit [m]
+* `theta_0`: injection angle above the horizon, 0–90°.
+* `U_0`: injection speed [m/s].
+* `s_end`: maximum value for s, i.e., the simulation limit [m].
 
 To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).

@@ -459,6 +459,8 @@ def ode_right_hand_side(
             + 6 * yc.Us[i] * f_s2sur[i]
         ) / (np.pi * yc.ND[i] * yc.Us[i] * d_drop[i] ** 3 * rho_w)
 
+        # FIX: Double check this calculation and its compontents. Current physics
+        # violation occurs due to theta_s (classes 0 and 1) racing to -inf.
         dyds.theta_s[i] = (
             np.pi * yc.ND[i] * (d_drop[i] ** 3) * g * rho_w * sin_s[i]
             - 6 * yc.Us[i] * f_rc2s[i]
