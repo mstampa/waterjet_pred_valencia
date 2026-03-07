@@ -178,15 +178,13 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     finite_y = y_vals[np.isfinite(y_vals)]
     x_max = float(np.max(finite_x)) if finite_x.size > 0 else 0.0
     y_max = float(np.max(finite_y)) if finite_y.size > 0 else 0.0
-    x_margin = float(1)
-    y_margin = float(1)
 
     p_traj = figure(
         title="Fire stream trajectory",
         x_axis_label="x / m",
         y_axis_label="y / m",
-        x_range=Range1d(0.0, x_max + x_margin),
-        y_range=Range1d(0.0, y_max + y_margin),
+        x_range=Range1d(0.0, x_max + 1.0),
+        y_range=Range1d(0.0, y_max + 1.0),
         match_aspect=True,
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
@@ -199,18 +197,27 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         color=PHASE_COLORS["stream"],
         legend_label="Trajectory",
     )
+    p_traj.legend.location = "top_left"
     _add_stream_width_patch(p_traj, source)
     _configure_linear_grid_density([p_traj])
 
     x_axis_label = "Streamwise position s / m"
-    x_margin: float = 1.0
-    x_range = Range1d(0, s_end + x_margin)
+    x_range = Range1d(0, s_end + 0.1)
+
+    speed_max = 0.0
+    speed_keys = ["Uc", "Ua", "Uf"] + [f"Us_{i}" for i in range(num_drop_classes)]
+    for key in speed_keys:
+        vals = np.asarray(source.data[key], dtype=float)
+        finite = vals[np.isfinite(vals)]
+        if finite.size > 0:
+            speed_max = max(speed_max, float(np.max(finite)))
 
     p_speeds = figure(
         title="Phase speeds",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="Speed / m/s",
+        y_range=Range1d(0.0, speed_max + 0.5),
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
@@ -247,13 +254,21 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             line_color=SPRAY_COLORS[i],
             legend_label=f"Us{i}",
         )
+    p_speeds.legend.location = "bottom_left"
     _configure_linear_grid_density([p_speeds])
 
+    diameter_max = 0.0
+    for key in ("Dc", "Da", "Df"):
+        vals = np.asarray(source.data[key], dtype=float)
+        finite = vals[np.isfinite(vals)]
+        if finite.size > 0:
+            diameter_max = max(diameter_max, float(np.max(finite)))
     p_diameters = figure(
         title="Phase diameters",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="diameter / m",
+        y_range=Range1d(0.0, diameter_max),
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
@@ -281,6 +296,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         line_color=PHASE_COLORS["stream"],
         legend_label="Df",
     )
+    p_diameters.legend.location = "top_left"
     _configure_linear_grid_density([p_diameters])
 
     p_angles = figure(
@@ -288,6 +304,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="Angle / deg",
+        y_range=Range1d(-90.0, 90.0),
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
@@ -316,6 +333,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             line_color=SPRAY_COLORS[i],
             legend_label=f"theta_s{i}",
         )
+    p_angles.legend.location = "bottom_left"
     _configure_linear_grid_density([p_angles])
 
     p_nd = figure(
@@ -338,6 +356,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             line_color=SPRAY_COLORS[i],
             legend_label=f"ND{i}",
         )
+    p_nd.legend.location = "bottom_right"
 
     p_rho = figure(
         title="Stream density",
