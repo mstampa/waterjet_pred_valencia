@@ -35,6 +35,7 @@ def main():
         logger.exception("Simulation run failed.")
         return 1
 
+    logger.info("Exiting.")
     return 0
 
 

@@ -153,7 +153,7 @@ def simulate(
     ev_mass.terminal = True  # pyright: ignore
     ev_mass.direction = -1  # pyright: ignore
 
-    # This is where da number magic happens!
+    # This is where the number magic happens!
     state_idx: Dict[str, int] = get_state_index_map()
     sol: OdeResult
     try:
@@ -458,18 +458,15 @@ def ode_right_hand_side(
             + 6 * yc.Us[i] * f_s2sur[i]
         ) / (np.pi * yc.ND[i] * yc.Us[i] * d_drop[i] ** 3 * rho_w)
 
-        # FIX: Double check this calculation and its compontents. Current physics
-        # violation occurs due to theta_s (classes 0 and 1) racing to -inf.
+        # FIX: Double check this calculation and its compontents.
+        # Currently, simulations crash because theta_s of drop classes 0 and 1 races
+        # to infinity shortly after the core breakup point.
         dyds.theta_s[i] = (
             np.pi * yc.ND[i] * (d_drop[i] ** 3) * g * rho_w * sin_s[i]
             - 6 * yc.Us[i] * f_rc2s[i]
             + 6 * yc.Us[i] * f_rs2a[i]
             + 6 * yc.Us[i] * f_rs2sur[i]
         ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
-
-        # if i == 1 and np.rad2deg(yc.theta_s[i]) < 40.0:
-        #     logger.debug("Breakpoint")
-        #     breakpoint()
 
     # Eq 9, 10, 11, 12 stream phase.
     dyds.Uf = (

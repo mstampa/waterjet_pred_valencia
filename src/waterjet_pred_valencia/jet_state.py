@@ -177,19 +177,15 @@ class JetState:
         """
 
         init = JetState()
-        logger.debug("Creating initial state vector...")
-        logger.debug(f"\t{injection_speed = }")
-        logger.debug(f"\t{injection_angle_deg = }")
-        logger.debug(f"\t{nozzle_diameter = }")
 
         # NOTE: Author confirmed that only the injection angle is measured relative to
         # horizon. Phase angles are measured relative to vertical axis.
-        injection_angle_rad = np.deg2rad(injection_angle_deg)
-        logger.debug("")
-        logger.debug(f"\t{injection_angle_rad = }")
-
-        # TODO: Clarify Andres' intention for outcommenting this line in 25.09.25 version
-        # injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
+        injection_angle_rad = float(np.deg2rad(injection_angle_deg))
+        # Change injection angle reference to the vertical axis.
+        # Andres outcommented this line in his 25.09.2025 version.
+        # Reincluded it due to the fact stated above. Plots confirm that this only
+        # changes where the angles start, crash behaviour is unchanged.
+        injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
 
         # Position
         init.x = 0.0
@@ -201,29 +197,27 @@ class JetState:
 
         # Eq 34-36 spray phase (one set per droplet class)
         for i in range(num_drop_classes):
-            # NOTE: Not 0.0 to prevent singularities, e.g. in dyds[theta_s] calculation.
+            # Note: not 0.0 to prevent singularities, e.g. in dyds[theta_s] calculation.
             # Since ND will grow rapidly, a small starting value doesn't hurt.
             init.ND[i] = 1.0
 
             init.Us[i] = injection_speed
             init.theta_s[i] = injection_angle_rad
-            logger.debug(f"\ttheta_s[{i}]={np.rad2deg(init.theta_s[i])}°")
 
         # Eq 38-40 air phase
-        # NOTE: -1e-6 from notebook, not paper.
+        # Note: -1e-6 from notebook, not paper.
         init.Ua = injection_speed - 1e-6
-        # NOTE: not 0.0 as in paper to prevent singularity in dyds.Ua calculation
+        # Note: not 0.0 as in paper to prevent singularity in dyds.Ua calculation
         init.Da = nozzle_diameter
         init.theta_a = injection_angle_rad
-        logger.debug(f"\ttheta_f={np.rad2deg(init.theta_a)}°")
 
         # Eq 41-44 fire stream phase
         init.Uf = injection_speed
         init.Df = nozzle_diameter
         init.theta_f = injection_angle_rad
-        logger.debug(f"\ttheta_f={np.rad2deg(init.theta_f)}°")
         init.rho_f = rho_w
 
+        logger.debug(f"Created initial state vector:\n{init}")
         return init
 
     # TODO: Check if limits need refinement
