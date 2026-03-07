@@ -16,3 +16,7 @@ build
 **.*~
 **.bak
 **.swp
+
+# Whitelist
+!doc/example_plot_files/*
+!doc/example_plot.html
