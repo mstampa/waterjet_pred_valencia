@@ -336,13 +336,29 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     p_angles.legend.location = "bottom_left"
     _configure_linear_grid_density([p_angles])
 
+    nd_min_positive = np.inf
+    nd_max = 0.0
+    for i in range(num_drop_classes):
+        nd_vals = np.asarray(source.data[f"ND_{i}"], dtype=float)
+        finite_positive = nd_vals[np.isfinite(nd_vals) & (nd_vals > 0.0)]
+        if finite_positive.size > 0:
+            nd_min_positive = min(nd_min_positive, float(np.min(finite_positive)))
+            nd_max = max(nd_max, float(np.max(finite_positive)))
+
+    if not np.isfinite(nd_min_positive):
+        nd_min_positive = 1e-3
+    if nd_max <= 0.0:
+        nd_max = 1.0
+    nd_y_start = max(1e-6, nd_min_positive * 0.5)
+    nd_y_end = max(nd_y_start * 10.0, nd_max * 1.2)
+
     p_nd = figure(
         title="Drop count",
         x_axis_label=x_axis_label,
         x_range=x_range,
         y_axis_label="ND / drops/s",
         y_axis_type="log",
-        y_range=Range1d(0.0, 1e7),
+        y_range=Range1d(nd_y_start, nd_y_end),
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
@@ -367,7 +383,6 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         height=300,
         tools=DEFAULT_TOOLS,
-        active_scroll="wheel_zoom",
     )
     p_rho.line(
         "s",
