@@ -104,9 +104,6 @@ def simulate(
     Raises:
         AssertionError: if a physical plausibility check failed.
     """
-    if debug:
-        logger.setLevel(logging.DEBUG)
-
     # Validate input parameters.
     assert injection_speed > 0.0, f"{injection_speed=} must be > 0"
     assert 0 <= injection_angle_deg <= 90, (
@@ -170,7 +167,9 @@ def simulate(
         """
         nonlocal last_s
         last_s = float(s)
-        return ode_right_hand_side(s, y, params=params, bypass=bypass, tracer=tracer)
+        return ode_right_hand_side(
+            s, y, params=params, debug=debug, bypass=bypass, tracer=tracer
+        )
 
     # This is where the number magic happens!
     try:
@@ -201,6 +200,7 @@ def ode_right_hand_side(
     s: float,
     y: NDArray[DTYPE],
     params: SimParams,
+    debug: bool = False,
     bypass: Optional[Dict[str, float]] = None,
     tracer: Optional[Tracer] = None,
 ) -> NDArray[DTYPE]:
@@ -216,6 +216,7 @@ def ode_right_hand_side(
         params: User and computed-once parameters.
 
     Optional args for debugging:
+        debug: Enable debug mode.
         bypass: Map of derivatives to override with provided values.
         tracer: Records all variables (not only the state vector) per simulation step.
 
@@ -224,7 +225,8 @@ def ode_right_hand_side(
     """
     # Convert state vector to dataclass for better readability and type safety.
     yc: JetState = JetState.from_array(y)
-    print_debug_state(s, yc, params)
+    if debug:
+        print_debug_state(s, yc, params)
     yc.assert_physically_plausible(params)
     dyds = JetState()
 
@@ -476,6 +478,8 @@ def ode_right_hand_side(
         ) / (np.pi * yc.ND[i] * yc.Us[i] * d_drop[i] ** 3 * rho_w)
 
         # FIX: Double check this calculation and its compontents.
+        # Remove debug printouts below after it's fixed.
+        #
         # Currently, simulations crash because theta_s of drop classes 0 and 1 races
         # to infinity shortly after the core breakup point.
         dyds.theta_s[i] = (
@@ -484,6 +488,18 @@ def ode_right_hand_side(
             + 6 * yc.Us[i] * f_rs2a[i]
             + 6 * yc.Us[i] * f_rs2sur[i]
         ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
+
+        if (i == 1) and (theta_s_deg := np.rad2deg(yc.theta_s[i])) > 80.0:
+            logger.debug(
+                f"{s=:.4f} m, dyds.theta_s[{i}] = {np.rad2deg(dyds.theta_s[i]):.4f}"
+            )
+            logger.debug(f"theta_s[{i}] = {yc.theta_s[i]:.4f} rad = {theta_s_deg:.4f}°")
+            logger.debug(f"{yc.ND[i]=:.4f} drops/s, {yc.Us[i]=:.4f} m/s")
+            logger.debug(f"{sin_s[i]=:.4f}, {den_s[i]=:.4f}")
+            logger.debug(
+                f"{f_rc2s[i]=:.4f} N/m, {f_rs2a[i]=:.4f} N/m, {f_rs2sur[i] =:.4f} N/m"
+            )
+            logger.debug("")
 
     # Eq 9, 10, 11, 12 stream phase.
     dyds.Uf = (
@@ -622,6 +638,7 @@ def print_debug_state(s: float, state: JetState, params: SimParams) -> None:
         state: the JetState at s.
         params: the simulation parameters.
     """
+
     theta_c = state.theta_f
 
     th_c_deg, th_a_deg, th_f_deg = np.rad2deg([theta_c, state.theta_a, state.theta_f])

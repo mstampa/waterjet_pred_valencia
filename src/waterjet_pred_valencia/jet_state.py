@@ -259,7 +259,7 @@ class JetState:
         )
 
         # Angles
-        # NOTE: author clarified that all phase angles are relative to vertical axis.
+        # Note: author clarified that all phase angles are relative to vertical axis.
         # Only the injection angle theta_0 is relative to the horizontal.
         th_low: float = 0.0  # upwards [deg]
         th_high: float = 180.0  # downwards [deg]
@@ -275,16 +275,16 @@ class JetState:
             )
 
         # Spray generation.
-        ND_max = [1e8, 1e7, 1e6, 1e6, 1e6]  # max drop generation rates
+        ND_max = np.array([1e8, 1e7, 1e6, 1e6, 1e6], dtype=DTYPE)
         assert len(ND_max) == num_drop_classes
         for i in range(num_drop_classes):
             assert 0.0 <= self.ND[i] <= ND_max[i], (
-                f"ND{i}={self.ND[i]:.2g} must be in range (0, {ND_max[i]:.2g})"
+                f"ND[{i}]={self.ND[i]:.2g} must be in range (0, {ND_max[i]:.2g})"
             )
 
         # Density.
         assert rho_a <= self.rho_f <= rho_w, (
-            f"Density {self.rho_f=:.2f}kg/m³ must be in range ({rho_a=}, {rho_w=})"
+            f"Density {self.rho_f=:.2f} kg/m³ must be in range ({rho_a=}, {rho_w=})"
         )
 
         return

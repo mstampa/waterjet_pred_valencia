@@ -135,7 +135,7 @@ eq7 = (
 
 # Spray phase radial momentum.
 eq8 = (
-    (pi / 6) * rho_w * (d_drop_i**3) * ND_i * Us_i * (-(sin(theta_s_i) * theta_s_i_))  # pyright: ignore
+    (pi / 6) * rho_w * (d_drop_i**3) * ND_i * Us_i * (-(sin(theta_s_i) * theta_s_i_))
     + (pi / 6) * rho_w * (d_drop_i**3) * g * (ND_i / Us_i) * sin(theta_s_i)
     - f_rc2s_i
     + f_rs2sur_i

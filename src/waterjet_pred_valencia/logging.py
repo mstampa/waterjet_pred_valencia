@@ -9,6 +9,7 @@ DEBUG_MODULES = [
     "waterjet_pred_valencia.jet_state",
     "waterjet_pred_valencia.logging",
     "waterjet_pred_valencia.plotting",
+    "waterjet_pred_valencia.simulator",
     "waterjet_pred_valencia.tracer",
 ]
 
