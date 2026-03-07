@@ -2,9 +2,20 @@
 
 **NOTE:**
 Work in progress and currently not functional!
-There are yet-unidentified errors in the ODE system.
+There are yet-unidentified errors in the ODE system,
+causing the simulations to abort prematurely.
 
----
+## Table of contents
+
+- [Overview](#overview)
+  - [Features](#features)
+  - [Prerequisites](#prerequisites)
+- [Getting started](#getting-started)
+  - [Installation](#installation)
+  - [Usage](#usage)
+- [To-Dos](#to-dos)
+
+## Overview
 
 This project simulates the trajectories of "fire streams", i.e., large water jets shot from fire monitors.
 The backbone is a 1D Eulerian analytical model reproduced from this publication:
@@ -28,7 +39,7 @@ water-core phase, air phase, and spray phase.
 It includes air entrainment, jet break-up spray generation and multi-dispersion (i.e., droplets of multiple sizes).
 Trajectory and spray behavior are modeled over the streamwise axis "s".
 
-**Features**
+### Features
 
 - Simulates, traces, and plots evolution of trajectory, state variables, mass and momentum terms.
 - Programmed defensively: simulation aborts if a physically impossible situation (e.g., a negative diameter) is detected.
@@ -40,10 +51,6 @@ Exception: plots are not produced when the debugger (PDB) gets activated.
 - Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
 
 ![Example plot](doc/example_plot.png)
-
----
-
-## Getting started
 
 ### Prerequisites
 
@@ -60,6 +67,10 @@ Developers wishing to contribute also require:
 * [ruff](https://docs.astral.sh/ruff) for linting.
 * [SymPy](https://sympy.org) for the `rearrange.py` helper script.
 
+---
+
+## Getting started
+
 ### Installation
 
 To install the package and its dependencies into your local Python environment, run:
@@ -69,20 +80,30 @@ cd /path/to/project
 pip install -e .  # -e = editable
 ```
 
+If a straightforward `pip install` is not possible on your system,
+create a virtual environment first and install from the local source tree:
+
+```bash
+cd /path/to/project
+python -m venv .venv
+source .venv/bin/activate  # Windows (PowerShell): .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
 ### Usage
 
 To run a simulation with default parameters:
 
 ```bash
-python -m waterjet-pred-valencia.cli
+python -m waterjet_pred_valencia.cli
 ```
-
 Run the command with the `-h` or `--help` option for a detailed usage description.
 
-The most important user-supplied input parameters for running simulations are: 
+The most important user-supplied input parameters for any simulation are:
 * `theta_0`: injection angle above the horizon, 0–90°.
-* `U_0`: injection speed [m/s].
-* `s_end`: maximum value for s, i.e., the simulation limit [m].
+* `U_0`: injection speed in meters per second.
+* `s_end`: maximum value for s, i.e., the simulation limit in meters.
 
 To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
