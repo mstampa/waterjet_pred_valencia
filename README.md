@@ -36,7 +36,7 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 - Tracing can be configured with different strides (e.g., one snapshot every 10 centimeters).
 - Trace can be exported to CSV.
 - Plots are produced as interactive HTMLs, independent of the simulation terminating successfully or due to error. 
-Exception: plots are not produced when the debugger (PDB) getsa activated.
+Exception: plots are not produced when the debugger (PDB) gets activated.
 - Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
 
 ![Example plot](doc/example_plot.png)
