@@ -6,7 +6,8 @@ from typing import Dict, Iterable, Tuple
 
 import numpy as np
 from bokeh.layouts import column, row
-from bokeh.models import AdaptiveTicker, ColumnDataSource, Range1d
+from bokeh.models import AdaptiveTicker, ColumnDataSource, HoverTool, Range1d
+from bokeh.models.renderers import GlyphRenderer
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
 from pandas import DataFrame
@@ -189,7 +190,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    p_traj.line(
+    traj_renderer = p_traj.line(
         "x",
         "y",
         source=source,
@@ -200,6 +201,16 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     p_traj.legend.location = "top_left"
     _add_stream_width_patch(p_traj, source)
     _configure_linear_grid_density([p_traj])
+    _add_hover_tool(
+        p_traj,
+        [
+            ("x", "@x{0.000}"),
+            ("y", "@y{0.000}"),
+            ("s", "@s{0.000}"),
+            ("Df", "@Df{0.0000}"),
+        ],
+        renderer=traj_renderer,
+    )
 
     x_axis_label = "Streamwise position s / m"
     x_range = Range1d(0, s_end + 0.1)
@@ -221,7 +232,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    p_speeds.line(
+    uc_renderer = p_speeds.line(
         "s",
         "Uc",
         source=source,
@@ -256,6 +267,17 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         )
     p_speeds.legend.location = "bottom_left"
     _configure_linear_grid_density([p_speeds])
+    _add_hover_tool(
+        p_speeds,
+        [
+            ("s", "@s{0.000}"),
+            ("Uc", "@Uc{0.000}"),
+            ("Ua", "@Ua{0.000}"),
+            ("Uf", "@Uf{0.000}"),
+            *[(f"Us{i}", f"@Us_{i}{{0.000}}") for i in range(num_drop_classes)],
+        ],
+        renderer=uc_renderer,
+    )
 
     diameter_max = 0.0
     for key in ("Dc", "Da", "Df"):
@@ -272,7 +294,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    p_diameters.line(
+    dc_renderer = p_diameters.line(
         "s",
         "Dc",
         source=source,
@@ -298,6 +320,16 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     )
     p_diameters.legend.location = "top_left"
     _configure_linear_grid_density([p_diameters])
+    _add_hover_tool(
+        p_diameters,
+        [
+            ("s", "@s{0.000}"),
+            ("Dc", "@Dc{0.0000}"),
+            ("Da", "@Da{0.0000}"),
+            ("Df", "@Df{0.0000}"),
+        ],
+        renderer=dc_renderer,
+    )
 
     p_angles = figure(
         title="Phase angles (above horizon)",
@@ -308,7 +340,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    p_angles.line(
+    theta_a_renderer = p_angles.line(
         "s",
         "theta_a_deg",
         source=source,
@@ -335,6 +367,19 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         )
     p_angles.legend.location = "bottom_left"
     _configure_linear_grid_density([p_angles])
+    _add_hover_tool(
+        p_angles,
+        [
+            ("s", "@s{0.000}"),
+            ("theta_a", "@theta_a_deg{0.00}"),
+            ("theta_f", "@theta_f_deg{0.00}"),
+            *[
+                (f"theta_s{i}", f"@theta_s_deg_{i}{{0.00}}")
+                for i in range(num_drop_classes)
+            ],
+        ],
+        renderer=theta_a_renderer,
+    )
 
     nd_min_positive = np.inf
     nd_max = 0.0
@@ -363,8 +408,9 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         tools=DEFAULT_TOOLS,
     )
 
+    nd_renderer: GlyphRenderer | None = None
     for i in range(num_drop_classes):
-        p_nd.line(
+        renderer = p_nd.line(
             "s",
             f"ND_{i}",
             source=source,
@@ -372,7 +418,17 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             line_color=SPRAY_COLORS[i],
             legend_label=f"ND{i}",
         )
+        if nd_renderer is None:
+            nd_renderer = renderer
     p_nd.legend.location = "bottom_right"
+    _add_hover_tool(
+        p_nd,
+        [
+            ("s", "@s{0.000}"),
+            *[(f"ND{i}", f"@ND_{i}{{0.00}}") for i in range(num_drop_classes)],
+        ],
+        renderer=nd_renderer,
+    )
 
     p_rho = figure(
         title="Stream density",
@@ -384,7 +440,7 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         height=300,
         tools=DEFAULT_TOOLS,
     )
-    p_rho.line(
+    rho_renderer = p_rho.line(
         "s",
         "rho_f",
         source=source,
@@ -393,6 +449,14 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         legend_label="rho_f",
     )
     _configure_linear_grid_density([p_rho])
+    _add_hover_tool(
+        p_rho,
+        [
+            ("s", "@s{0.000}"),
+            ("rho_f", "@rho_f{0.00}"),
+        ],
+        renderer=rho_renderer,
+    )
 
     plot_layout = column(
         p_traj,
@@ -468,4 +532,22 @@ def _configure_linear_grid_density(figures: Iterable) -> None:
         for axis in fig.yaxis:
             if isinstance(axis.ticker, AdaptiveTicker):
                 axis.ticker = AdaptiveTicker(desired_num_ticks=DESIRED_MAJOR_TICKS)
+    return
+
+
+def _add_hover_tool(
+    fig, tooltips: list[tuple[str, str]], renderer: GlyphRenderer | None = None
+) -> None:
+    """Attach a hover tool with the provided tooltip rows.
+
+    Args:
+        fig: Bokeh figure to augment.
+        tooltips: Label/value tooltip tuples shown on hover.
+        renderer: Optional glyph renderer used as the single hover target.
+    """
+
+    hover = HoverTool(tooltips=tooltips, mode="vline")
+    if renderer is not None:
+        hover.renderers = [renderer]
+    fig.add_tools(hover)
     return
