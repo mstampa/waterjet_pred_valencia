@@ -104,18 +104,8 @@ def simulate(
     Raises:
         AssertionError: if a physical plausibility check failed.
     """
-
-    # Setup logging.
-    log_level = logging.DEBUG if debug else logging.INFO
-    logger.setLevel(log_level)
-    if not logger.handlers:
-        h = logging.StreamHandler()
-        log_fmt = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-        h.setFormatter(logging.Formatter(log_fmt))
-        logger.addHandler(h)
-        logger.propagate = False  # don't let root override us
-    for h in logger.handlers:
-        h.setLevel(log_level)
+    if debug:
+        logger.setLevel(logging.DEBUG)
 
     # Validate input parameters.
     assert injection_speed > 0.0, f"{injection_speed=} must be > 0"

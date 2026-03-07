@@ -76,7 +76,6 @@ def run_simulation(args: Namespace) -> None:
         logger.info(f"Execution time: {perf_counter() - start_time:.6f} sec.")
 
         # Plot and save.
-        path_trace: Path = Path(args.trace)
         trace_df: DataFrame = tracer.to_wide_dataframe()
         if failed_error is None:
             assert result is not None
@@ -86,7 +85,10 @@ def run_simulation(args: Namespace) -> None:
             plot_trace(trace_df, args.output)
         else:
             logger.warning("Simulation failed before any trace rows were recorded.")
-        tracer.to_csv(path_trace)
+
+        if args.csv:
+            path_csv: Path = Path(args.csv)
+            tracer.to_csv(path_csv)
 
     if failed_error is not None:
         raise failed_error
@@ -108,7 +110,6 @@ def get_arguments() -> Namespace:
         interactive plots in an HTML file."
     )
 
-    # Key arguments.
     parser.add_argument(
         "-a",
         "--angle",
@@ -134,13 +135,36 @@ def get_arguments() -> Namespace:
         default=30.8,
     )
 
-    # Optional arguments.
+    parser.add_argument(
+        "--csv",
+        help="If provided, trace is exported to this CSV file path.",
+        required=False,
+        metavar="trace.csv",
+        type=Path,
+    )
     parser.add_argument(
         "-d",
         "--debug",
-        help="Activates tracer, console printouts, and auto-drop into PDB on error.",
+        help="If provided, activates live console printouts "
+        + "and auto-dropping into PDB on error.",
         action="store_true",
         default=False,
+    )
+    parser.add_argument(
+        "--max_step",
+        help="Maximal integration step [m]. Default: %(default)s."
+        + " Increase to trade accuracy for performance.",
+        metavar="float",
+        type=float,
+        default=1e-3,
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Plots are saved to this HTML file path. Default: %(default)s.",
+        metavar="path",
+        type=Path,
+        default=Path(gettempdir()) / "simulation_plot.html",
     )
     parser.add_argument(
         "--span",
@@ -148,32 +172,6 @@ def get_arguments() -> Namespace:
         metavar="float",
         type=float,
         default=100.0,
-    )
-    parser.add_argument(
-        "--max_step",
-        help="Max simulation step [m]. Default: %(default)s"
-        + " Increase to trade accuracy for performance.",
-        metavar="float",
-        type=float,
-        default=1e-3,
-    )
-
-    # TODO: Add timestamps to output paths.
-    parser.add_argument(
-        "-o",
-        "--output",
-        help="Path to save the generated plots to. Default: %(default)s.",
-        metavar="path",
-        type=Path,
-        default=Path(gettempdir()) / "simulation_plot.html",
-    )
-    parser.add_argument(
-        "--trace",
-        help="Path to save the traced variables to. Requires debug mode.\
-        Default: %(default)s.",
-        metavar="path",
-        type=Path,
-        default=Path(gettempdir()) / "simulation_trace.csv",
     )
 
     return parser.parse_args()
