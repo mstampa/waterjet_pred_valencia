@@ -158,17 +158,17 @@ def add_transfer_encoding_note(fig) -> None:
         fig: Bokeh figure to annotate.
     """
 
-    y_screen = (fig.height if fig.height is not None else 300) - 12
     fig.add_layout(
         Label(
             x=8,
-            y=y_screen,
+            y=6,
             x_units="screen",
             y_units="screen",
-            text="line=source, marker=target, dashed=total, grey=surroundings",
+            text="line color=source phase"
+            + ", marker color=target phase"
+            + ", dashed=total, grey=surroundings",
             text_font_size="9pt",
             text_color="#303030",
-            text_baseline="top",
             background_fill_color="#ffffff",
             background_fill_alpha=0.7,
         )

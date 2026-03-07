@@ -46,9 +46,9 @@ def save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     p_angles = build_angle_panel(source, x_range)
     p_nd = build_nd_panel(source, x_range)
     p_rho = build_rho_panel(source, x_range)
+    p_mass = build_transfer_mass_panel(source, x_range)
     p_mom_stream = build_transfer_stream_panel(source, x_range)
     p_mom_radial = build_transfer_radial_panel(source, x_range)
-    p_mass = build_transfer_mass_panel(source, x_range)
 
     configure_linear_grid_density(
         [
@@ -57,9 +57,9 @@ def save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
             p_diameters,
             p_angles,
             p_rho,
+            p_mass,
             p_mom_stream,
             p_mom_radial,
-            p_mass,
         ]
     )
 
@@ -67,9 +67,8 @@ def save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         p_traj,
         row(p_speeds, p_diameters, sizing_mode="stretch_width"),
         row(p_angles, p_nd, sizing_mode="stretch_width"),
-        p_rho,
+        row(p_rho, p_mass, sizing_mode="stretch_width"),
         row(p_mom_stream, p_mom_radial, sizing_mode="stretch_width"),
-        p_mass,
         sizing_mode="stretch_width",
     )
     save(plot_layout)

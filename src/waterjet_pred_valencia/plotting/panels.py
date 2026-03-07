@@ -199,7 +199,6 @@ def build_rho_panel(source: ColumnDataSource, x_range: Range1d):
         y_axis_label="Density / kg/m³",
         x_range=x_range,
         y_range=Range1d(0.0, 1000.0),
-        height=300,
     )
     primary = add_series_from_specs(
         p,
