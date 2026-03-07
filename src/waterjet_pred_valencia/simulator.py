@@ -73,9 +73,10 @@ def get_state_index_map() -> Dict[str, int]:
 
 
 def simulate(
-    injection_speed: float,
     injection_angle_deg: float,
+    injection_speed: float,
     nozzle_diameter: float,
+    injection_height: float = 0.0,
     s_span: Tuple[float, float] = (0, 100),
     max_step: float = 1e-3,
     method: str = "Radau",
@@ -86,9 +87,10 @@ def simulate(
     """Simulate a fire stream trajectory.
 
     Args:
-        injection_speed: U_0 Speed of the water as it exists the nozzle [m/s].
         injection_angle_deg: theta_0 Nozzle elevation angle (relative to horizon) [deg].
+        injection_speed: U_0 Speed of the water as it exists the nozzle [m/s].
         nozzle_diameter: D_0 Diameter of the nozzle [m].
+        injection_height: y_0 Height of the nozzle above ground [m].
         s_span: (start, end) in streamwise domain `s` [m].
         max_step: Max integration step size [m].
         method: See documentation for `scipy.integrate.solve_ivp`.
@@ -120,17 +122,16 @@ def simulate(
 
     # Store given and calculate some derived parameters (e.g., s_brk=breakup distance).
     params = SimParams(
-        injection_speed=injection_speed,
         injection_angle_deg=injection_angle_deg,
+        injection_height=injection_height,
+        injection_speed=injection_speed,
         nozzle_diameter=nozzle_diameter,
     )
     if bypass is not None:
         logger.warning(f"Active bypasses: {bypass}")
 
     # Construct initial state vector
-    initial_state_vec = JetState.get_initial(
-        injection_speed, injection_angle_deg, nozzle_diameter
-    )
+    initial_state_vec = JetState.get_initial(params)
 
     # Event to stop the simulation when water hits the ground (y < 0).
     def hit_ground_event(_, y) -> float:
@@ -490,14 +491,20 @@ def ode_right_hand_side(
         ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
 
         if (i == 1) and (theta_s_deg := np.rad2deg(yc.theta_s[i])) > 80.0:
+            from inspect import currentframe, getframeinfo
+
+            frameinfo = getframeinfo(currentframe())  # pyright: ignore
             logger.debug(
-                f"{s=:.4f} m, dyds.theta_s[{i}] = {np.rad2deg(dyds.theta_s[i]):.4f}"
+                f"dyds.theta_s[1] inputs at {s=:.4f} m (simulator.py:{frameinfo.lineno}):"
             )
             logger.debug(f"theta_s[{i}] = {yc.theta_s[i]:.4f} rad = {theta_s_deg:.4f}°")
             logger.debug(f"{yc.ND[i]=:.4f} drops/s, {yc.Us[i]=:.4f} m/s")
             logger.debug(f"{sin_s[i]=:.4f}, {den_s[i]=:.4f}")
             logger.debug(
                 f"{f_rc2s[i]=:.4f} N/m, {f_rs2a[i]=:.4f} N/m, {f_rs2sur[i] =:.4f} N/m"
+            )
+            logger.debug(
+                f"Result dyds.theta_s[{i}] = {np.rad2deg(dyds.theta_s[i]):.4f}"
             )
             logger.debug("")
 

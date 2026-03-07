@@ -158,19 +158,14 @@ class JetState:
         raise KeyError(f"Unknown variable name '{name}'")
 
     @staticmethod
-    def get_initial(
-        injection_speed: float,
-        injection_angle_deg: float,
-        nozzle_diameter: float,
-        injection_height: float = 2.0,
-    ) -> "JetState":
+    def get_initial(params: SimParams) -> "JetState":
         """Return the initial state vector of the fire stream (see appendix of paper).
 
         Args:
-            injection_speed: U_0, water's speed as it exits the nozzle [m/s].
             injection_angle_deg: theta_0 (nozzle angle relative to horizon) [deg].
-            nozzle_diameter: D_0 [m].
-            injection_height: y_0, height of nozzle above ground [m] (default: 0.0).
+            injection_speed: U_0, water's speed as it exits the nozzle [m/s].
+            nozzle_diameter (D_0): Nozzle diameter [m].
+            injection_height (y_0): Height of nozzle above ground [m] (default: 0.0).
 
         Returns:
             JetState representing the initial state of the simulation
@@ -180,7 +175,7 @@ class JetState:
 
         # NOTE: Author confirmed that only the injection angle is measured relative to
         # horizon. Phase angles are measured relative to vertical axis.
-        injection_angle_rad = float(np.deg2rad(injection_angle_deg))
+        injection_angle_rad = float(np.deg2rad(params.injection_angle_deg))
         # Change injection angle reference to the vertical axis.
         # Andres outcommented this line in his 25.09.2025 version.
         # Reincluded it due to the fact stated above. Plots confirm that this only
@@ -189,11 +184,11 @@ class JetState:
 
         # Position
         init.x = 0.0
-        init.y = injection_height
+        init.y = params.injection_height
 
         # Eq 31-33 core phase
-        init.Uc = injection_speed
-        init.Dc = nozzle_diameter
+        init.Uc = params.injection_speed
+        init.Dc = params.nozzle_diameter
 
         # Eq 34-36 spray phase (one set per droplet class)
         for i in range(num_drop_classes):
@@ -201,19 +196,19 @@ class JetState:
             # Since ND will grow rapidly, a small starting value doesn't hurt.
             init.ND[i] = 1.0
 
-            init.Us[i] = injection_speed
+            init.Us[i] = params.injection_speed
             init.theta_s[i] = injection_angle_rad
 
         # Eq 38-40 air phase
         # Note: -1e-6 from notebook, not paper.
-        init.Ua = injection_speed - 1e-6
+        init.Ua = params.injection_speed - 1e-6
         # Note: not 0.0 as in paper to prevent singularity in dyds.Ua calculation
-        init.Da = nozzle_diameter
+        init.Da = params.nozzle_diameter
         init.theta_a = injection_angle_rad
 
         # Eq 41-44 fire stream phase
-        init.Uf = injection_speed
-        init.Df = nozzle_diameter
+        init.Uf = params.injection_speed
+        init.Df = params.nozzle_diameter
         init.theta_f = injection_angle_rad
         init.rho_f = rho_w
 

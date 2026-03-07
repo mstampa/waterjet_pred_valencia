@@ -129,7 +129,7 @@ def build_angle_panel(source: ColumnDataSource, x_range: Range1d):
     """Create phase-angle panel using series specs."""
 
     p = new_panel(
-        title="Phase angles (relative to vertical axis, 0 = up)",
+        title="Phase angles relative to vertical axis (0° = up, 180° = down)",
         x_axis_label="Streamwise position s / m",
         y_axis_label="Angle / deg",
         x_range=x_range,

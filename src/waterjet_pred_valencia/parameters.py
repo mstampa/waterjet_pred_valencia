@@ -23,8 +23,9 @@ class SimParams:
     """Dataclass to hold per-simulation parameters (given or computed once).
 
     Attributes:
-        injection_speed (U_0): Speed of the water as it exits the nozzle [m/s].
         injection_angle_deg (theta_0): Elevation angle of the nozzle [deg].
+        injection_height (y_0): Nozzle height above ground [m].
+        injection_speed (U_0): Speed of the water as it exits the nozzle [m/s].
         nozzle_diameter (D_0): Nozzle diameter [m].
 
     Derived attributes:
@@ -33,23 +34,29 @@ class SimParams:
         _is_post_breakup: Flag to indicate if the simulation has advanced past s_brk.
     """
 
-    injection_speed: float
     injection_angle_deg: float
+    injection_height: float
+    injection_speed: float
     nozzle_diameter: float
     _s_brk: float
     _weber: float
     _is_post_breakup: bool
 
     def __init__(
-        self, injection_speed: float, injection_angle_deg: float, nozzle_diameter: float
+        self,
+        injection_angle_deg: float,
+        injection_speed: float,
+        nozzle_diameter: float,
+        injection_height: float = 0.0,
     ) -> None:
         """Initialize simulation parameters.
 
         Args:
             See class attributes.
         """
-        self.injection_speed = injection_speed
         self.injection_angle_deg = injection_angle_deg
+        self.injection_height = injection_height
+        self.injection_speed = injection_speed
         self.nozzle_diameter = nozzle_diameter
         self._s_brk = get_breakup_distance(nozzle_diameter)
         self._weber = get_weber_number(injection_speed, nozzle_diameter)

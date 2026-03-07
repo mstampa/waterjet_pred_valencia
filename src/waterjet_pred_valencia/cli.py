@@ -62,9 +62,10 @@ def run_simulation(args: Namespace) -> None:
     result = None
     try:
         result = simulate(
-            injection_speed=args.speed,
             injection_angle_deg=args.angle,
+            injection_speed=args.speed,
             nozzle_diameter=args.nozzle,
+            injection_height=args.y0,
             s_span=(0.0, args.span),
             max_step=args.max_step,
             debug=args.debug,
@@ -138,6 +139,13 @@ def get_arguments() -> Namespace:
         metavar="float",
         type=float,
         default=30.8,
+    )
+    parser.add_argument(
+        "--y0",
+        help="Initial height y_0 [m]. Default: %(default)s.",
+        metavar="float",
+        type=float,
+        default=0.0,
     )
 
     parser.add_argument(
