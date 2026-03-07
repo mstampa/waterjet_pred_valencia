@@ -18,5 +18,4 @@ build
 **.swp
 
 # Whitelist
-!doc/example_plot_files/*
-!doc/example_plot.html
+!doc/example_plot.png
