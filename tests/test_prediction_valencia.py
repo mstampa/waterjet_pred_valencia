@@ -22,8 +22,11 @@ from waterjet_pred_valencia.simulator import simulate
     ],
 )
 def test_valencia_article_results(speed, angle_deg, exp_x_max, exp_y_max):
+    result = simulate(speed, np.deg2rad(angle_deg), 0.00254, s_span=(0.0, 200.0))
+    assert result.sol is not None
 
-    sol, idx = simulate(speed, np.deg2rad(angle_deg), 0.00254, s_span=(0.0, 200.0))
+    sol = result.sol
+    idx = result.state_idx
 
     x_last = sol.y[idx["x"], -1]
     y_max = np.max(sol.y[idx["y"], :])

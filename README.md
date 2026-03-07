@@ -2,8 +2,7 @@
 
 **NOTE:**
 Work in progress and currently not functional!
-There seem to be errors in the ODE system.
-Example plots were generated with some of the computations bypassed.
+There are yet-unidentified errors in the ODE system.
 
 ---
 
@@ -29,7 +28,18 @@ water-core phase, air phase, and spray phase.
 It includes air entrainment, jet break-up spray generation and multi-dispersion (i.e., droplets of multiple sizes).
 Trajectory and spray behavior are modeled over the streamwise axis "s".
 
-![Example plots](doc/example_plots.png)
+**Features**
+
+- Simulates, traces, and plots evolution of trajectory, state variables, mass and momentum terms.
+- Programmed defensively: simulation aborts if a physically impossible situation (e.g., a negative diameter) is detected.
+- Debug mode enables live console output and auto-dropping into PDB on error.
+- Tracing can be configured with different strides (e.g., one snapshot every 10 centimeters).
+- Trace can be exported to CSV.
+- Plots are produced as interactive HTMLs, see [doc/example plot.html](doc/example_plots.html).
+- Plots are produced independent of the simulation terminating successfully or due to error. *Note*: Not on debugger activation though!
+- Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
+
+---
 
 ## Getting started
 
@@ -59,31 +69,27 @@ pip install -e .  # -e = editable
 
 ### Usage
 
-The user has to provide:
+To run a simulation with default parameters:
 
+```bash
+python -m waterjet-pred-valencia.cli
+```
+
+Run the command with the `-h` or `--help` option for a detailed usage description.
+
+The most important user-supplied input parameters for running simulations are: 
 * `theta_0`: injection angle above the horizon, 0–90°
 * `U_0`: injection speed [m/s]
 * `s_end`: maximum value for s, i.e., the simulation limit [m]
 
-The core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py)
-is designed to be easily importable into other projects.
-
-For testing purposes, a simple CLI (command-line interface) is provided as well.
-The results are saved as interactive HTML plots using bokeh.
-If you've installed the package, it should be available in your environment.
-
-```bash
-python -m waterjet-pred-valencia.cli --angle 24.0 --speed 30.8 --nozzle 0.0254 --max_s 100
-```
-
-Run the command with the `-h` or `--help` option for a detailed usage description.
-Extended console output can be activated via the debug mode (option `-d` or `--debug`).
-
 To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
+
+---
 
 ## To-Dos
 
 * Fix ODE system.
 * Compare results to original research article.
 * Model wind effects.
+* Optimize performance.
