@@ -8,40 +8,6 @@ Manual labor is reduced to expanding the derivates with product and chain rules.
 from sympy import Derivative, cos, factor, pi, simplify, sin, solve, symbols
 from sympy.abc import g, s
 
-
-# TODO: Validate printouts after completing switch from flat NDArray to JetState
-def print_solution(name: str, deriv: Derivative, sol) -> None:
-    """Convert solution printout to code that can be copy-pasted into `simulator.py`.
-
-    Note: Some manual post clean-up may still be required.
-
-    Args:
-        name: Name of the variable for which the derivative solution should be printed.
-        deriv: SymPy symbol of the derivative.
-        sol: Solution produced by sympy.solve().
-    """
-
-    expr = factor(simplify(sol[deriv]))
-    txt = str(expr)
-    txt = txt.replace("pi", "np.pi")
-    txt = txt.replace("_i", "[i]")
-    for x in ["f", "c", "a", "s[i]"]:
-        # sines and cosines are precomputed variables
-        txt = txt.replace(f"sin(theta_{x})", f"sin_{x}")
-        txt = txt.replace(f"cos(theta_{x})", f"cos_{x}")
-
-        # 'yc' is the state vector 'y' represented by dataclass JetState
-        txt = txt.replace(f"U{x}", f"yc.U{x}")
-        txt = txt.replace(f"D{x}", f"yc.D{x}")
-        txt = txt.replace(f"theta_{x}", f"yc.theta_{x}")
-
-    txt = txt.replace("ND[i]", "yc.ND[i]")
-    txt = txt.replace("rho_f", "yc.rho_f")
-
-    print(f"dyds.{name} = {txt}")
-    return
-
-
 # --- DEFINE SYMBOLS --- #
 
 # Model constants: water and air density, drop diameters.
@@ -81,15 +47,26 @@ f_rs2sur_i, f_rs2sur_total = symbols("f_rs2sur_i f_rs2sur_total")  # radial to s
 m_sur2f = symbols("m_sur2f")  # to stream phase (air entrainment)
 
 # --- DECLARE DERIVATIVES --- #
+# Derivatives are written with a trailing underscore. Example: Uc_ = d(Uc)/ds
 
-Uc_, Ua_, Uf_ = Derivative(Uc, s), Derivative(Ua, s), Derivative(Uf, s)
+Uc_ = Derivative(Uc, s)
+Ua_ = Derivative(Ua, s)
+Uf_ = Derivative(Uf, s)
 Us_i_ = Derivative(Us_i, s)
-Dc_, Da_, Df_ = Derivative(Dc, s), Derivative(Da, s), Derivative(Df, s)
-theta_c_, theta_a_ = Derivative(theta_c, s), Derivative(theta_a, s)
-theta_f_, theta_s_i_ = Derivative(theta_f, s), Derivative(theta_s_i, s)
-ND_i_, rho_f_ = Derivative(ND_i, s), Derivative(rho_f, s)
+Dc_ = Derivative(Dc, s)
+Da_ = Derivative(Da, s)
+Df_ = Derivative(Df, s)
+theta_c_ = Derivative(theta_c, s)
+theta_a_ = Derivative(theta_a, s)
+theta_f_ = Derivative(theta_f, s)
+theta_s_i_ = Derivative(theta_s_i, s)
+ND_i_ = Derivative(ND_i, s)
+rho_f_ = Derivative(rho_f, s)
 
 # --- DEFINE EQUATIONS --- #
+# Manual preparation to make SymPy happy:
+# 1. expand derivatives of products like d(ND * Us)/ds with chain and product rules.
+# 2. Bring all terms to the left side (xyz = 0).
 
 # Core phase mass conservation.
 eq1 = (pi / 4) * rho_w * (2 * Dc * Uc * Dc_ + Dc**2 * Uc_) + m_c2s_total
@@ -202,20 +179,71 @@ sol = solve(
     ),
 )
 
-# --- PRETTY-PRINT THE SOLUTIONS --- #
-# Manually paste output into simulator.py
 
+# --- PRETTY-PRINT THE SOLUTIONS --- #
+
+
+def print_header(header: str) -> None:
+    """Print a header string with horizontal lines."""
+    print(80 * "#")
+    print("# " + header)
+    print(80 * "#" + "\n")
+
+
+# TODO: Validate printouts after completing switch from flat NDArray to JetState
+def print_solution(name: str, deriv: Derivative, sol) -> None:
+    """Convert solution printout to code that can be copy-pasted into `simulator.py`.
+
+    Note: Some manual post clean-up may still be required.
+
+    Args:
+        name: Name of the variable for which the derivative solution should be printed.
+        deriv: SymPy symbol of the derivative.
+        sol: Solution produced by sympy.solve().
+    """
+
+    expr = factor(simplify(sol[deriv]))
+    txt = str(expr)
+    txt = txt.replace("pi", "np.pi")
+    txt = txt.replace("_i", "[i]")
+    for x in ["f", "c", "a", "s[i]"]:
+        # sines and cosines are precomputed variables
+        txt = txt.replace(f"sin(theta_{x})", f"sin_{x}")
+        txt = txt.replace(f"cos(theta_{x})", f"cos_{x}")
+
+        # 'yc' is the state vector 'y' represented by dataclass JetState
+        txt = txt.replace(f"U{x}", f"yc.U{x}")
+        txt = txt.replace(f"D{x}", f"yc.D{x}")
+        txt = txt.replace(f"theta_{x}", f"yc.theta_{x}")
+
+    txt = txt.replace("ND[i]", "yc.ND[i]")
+    txt = txt.replace("rho_f", "yc.rho_f")
+
+    print(f"dyds.{name} = {txt}\n")
+    return
+
+
+print_header("Core phase")
 print_solution("Uc", Uc_, sol)
 print_solution("Dc", Dc_, sol)
+
+print_header("Air phase")
 print_solution("Ua", Ua_, sol)
 print_solution("Da", Da_, sol)
 print_solution("theta_a", theta_a_, sol)
+
+print_header("Stream phase")
 print_solution("Uf", Uf_, sol)
 print_solution("Df", Df_, sol)
 print_solution("theta_f", theta_f_, sol)
+print_solution("rho_f", rho_f_, sol)
+
+print_header("Spray phases")
 print_solution("ND[i]", ND_i_, sol)
 print_solution("Us[i]", Us_i_, sol)
 print_solution("theta_s[i]", theta_s_i_, sol)
-print_solution("rho_f", rho_f_, sol)
+
+print("\nCopy+paste these solutions into simulator.ode_right_hand_side().")
+print("Some manual clean-up may still be required.\n")
 
 exit()
