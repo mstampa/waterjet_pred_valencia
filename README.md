@@ -39,7 +39,7 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 - Plots are produced independent of the simulation terminating successfully or due to error. *Note*: Not on debugger activation though!
 - Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
 
-![Example plot](doc/example_plots.html)
+![Example plot](doc/example_plot.png)
 
 ---
 
