@@ -34,10 +34,10 @@ def build_source_from_solution(
         "Dc": sol.y[JetState.get_idx("Dc"), :],
         "Ua": sol.y[JetState.get_idx("Ua"), :],
         "Da": sol.y[JetState.get_idx("Da"), :],
-        "theta_a_deg": np.rad2deg(np.pi / 2 - sol.y[JetState.get_idx("theta_a"), :]),
+        "theta_a_deg": np.rad2deg(sol.y[JetState.get_idx("theta_a"), :]),
         "Uf": sol.y[JetState.get_idx("Uf"), :],
         "Df": sol.y[JetState.get_idx("Df"), :],
-        "theta_f_deg": np.rad2deg(np.pi / 2 - sol.y[JetState.get_idx("theta_f"), :]),
+        "theta_f_deg": np.rad2deg(sol.y[JetState.get_idx("theta_f"), :]),
         "rho_f": sol.y[JetState.get_idx("rho_f"), :],
         "x": sol.y[JetState.get_idx("x"), :],
         "y": sol.y[JetState.get_idx("y"), :],
@@ -106,17 +106,17 @@ def build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, floa
         "Dc": _trace_col("Dc"),
         "Ua": _trace_col("Ua"),
         "Da": _trace_col("Da"),
-        "theta_a_deg": 90.0 - _trace_col("theta_a_deg"),
+        "theta_a_deg": _trace_col("theta_a_deg"),
         "Uf": _trace_col("Uf"),
         "Df": _trace_col("Df"),
-        "theta_f_deg": 90.0 - _trace_col("theta_f_deg"),
+        "theta_f_deg": _trace_col("theta_f_deg"),
         "rho_f": _trace_col("rho_f"),
         "x": _trace_col("x"),
         "y": _trace_col("y"),
         **{f"ND_{i}": _trace_col(f"ND[{i}]") for i in range(num_drop_classes)},
         **{f"Us_{i}": _trace_col(f"Us[{i}]") for i in range(num_drop_classes)},
         **{
-            f"theta_s_deg_{i}": 90.0 - _trace_col(f"theta_s_deg[{i}]")
+            f"theta_s_deg_{i}": _trace_col(f"theta_s_deg[{i}]")
             for i in range(num_drop_classes)
         },
         "m_sur2f": _trace_col("m_sur2f"),

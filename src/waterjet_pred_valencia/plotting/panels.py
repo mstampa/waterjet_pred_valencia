@@ -129,11 +129,11 @@ def build_angle_panel(source: ColumnDataSource, x_range: Range1d):
     """Create phase-angle panel using series specs."""
 
     p = new_panel(
-        title="Phase angles (above horizon)",
+        title="Phase angles (relative to vertical axis, 0 = up)",
         x_axis_label="Streamwise position s / m",
         y_axis_label="Angle / deg",
         x_range=x_range,
-        y_range=Range1d(-90.0, 90.0),
+        y_range=Range1d(0.0, 180.0),
     )
     specs = [
         SeriesSpec("theta_a_deg", "theta_a", PHASE_COLORS["air"]),

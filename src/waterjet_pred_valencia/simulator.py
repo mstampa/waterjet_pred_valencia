@@ -247,13 +247,13 @@ def ode_right_hand_side(
         f"Core vectors {e_c=}, {n_c=} must be orthogonal but {core_dotprod=} != 0"
     )
 
-    # relative vector from core to air phase
+    # Relative vector from core to air phase.
     U_ca: NDArray = (yc.Ua * e_a) - (yc.Uc * e_c)
 
     # --- MASS AND MOMENTUM TRANSFER --- #
 
     # TODO: Mathematica notebook used abs for a number of calculations, article didn't.
-    # Double-check where they're useful vs. where the sign matters.
+    # Double-check where they are actually required.
 
     # Eq. 15 mass flow surroundings -> jet (air entrainment).
     m_sur2f = alpha * np.pi * rho_a * yc.Ua * yc.Df
@@ -280,7 +280,7 @@ def ode_right_hand_side(
     Delta = yc.Df  # radial integral scale of the jet, assumed to be core diameter
     epsilon: float = 0.012 * (s / (Delta * np.sqrt(params.weber)))
 
-    # mass and momentum transfer vars for each spray class
+    # Mass and momentum transfer terms for each spray class.
     sin_s, cos_s, den_s = (np.zeros(num_drop_classes) for _ in range(3))
     m_c2s, m_s2sur, f_c2s, f_rc2s, f_s2a, f_rs2a, f_s2sur, f_rs2sur, u_rc2s = (
         np.zeros(num_drop_classes) for _ in range(9)
@@ -299,7 +299,7 @@ def ode_right_hand_side(
         # Construct stream phase unit vectors.
         e_s: NDArray = np.array([sin_s[i], cos_s[i]])  # streamwise
         n_s: NDArray = rotate90_cw(e_s)  # radial
-        spray_dotprod: float = np.dot(e_s, n_s)
+        spray_dotprod: DTYPE = np.dot(e_s, n_s)
         assert np.isclose(spray_dotprod, 0.0, atol=1e-6), (
             f"Spray vectors {e_s=}, {n_s=} must be orthogonal but {spray_dotprod=} != 0"
         )
@@ -308,9 +308,8 @@ def ode_right_hand_side(
         U_sa: NDArray = (yc.Ua * e_a) - (yc.Us[i] * e_s)
 
         # Eq. 17 mass flow spray -> surroundings per unit s [kg/(m*s)].
-        # NOTE: Typos in research article, confirmed by the author.
-        # Factors rho_w, Pi, Df were missing, and it used the wrong diameter
-        # (Ds instead of Df).
+        # NOTE: Typos in research article, confirmed by the author. Factors rho_w, Pi,
+        # Df were missing, and it used the wrong diameter index (Ds instead of Df).
         m_s2sur[i] = (
             (2.0 / 3.0)
             * yc.ND[i]
@@ -468,6 +467,10 @@ def ode_right_hand_side(
             + 6 * yc.Us[i] * f_rs2sur[i]
         ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
 
+        # if i == 1 and np.rad2deg(yc.theta_s[i]) < 40.0:
+        #     logger.debug("Breakpoint")
+        #     breakpoint()
+
     # Eq 9, 10, 11, 12 stream phase.
     dyds.Uf = (
         np.pi * yc.Df**2 * g * rho_a * cos_f
@@ -540,14 +543,14 @@ def ode_right_hand_side(
         scalars = {
             "x": yc.x,
             "y": yc.y,
-            "theta_f_deg": np.rad2deg(yc.theta_f),
-            "theta_a_deg": np.rad2deg(yc.theta_a),
             "Uc": yc.Uc,
             "Ua": yc.Ua,
             "Uf": yc.Uf,
             "Dc": yc.Dc,
             "Da": yc.Da,
             "Df": yc.Df,
+            "theta_f_deg": np.rad2deg(yc.theta_f),
+            "theta_a_deg": np.rad2deg(yc.theta_a),
             "rho_f": yc.rho_f,
             "m_sur2f": m_sur2f,
             "m_a2sur": m_a2sur,
@@ -559,12 +562,12 @@ def ode_right_hand_side(
             "f_rs2a_total": f_rs2a_total,
             "f_s2sur_total": f_s2sur_total,
             "f_rs2sur_total": f_rs2sur_total,
-            "dyds_Uf": float(dyds.Uf),
-            "dyds_theta_f": float(dyds.theta_f),
-            "dyds_Ua": float(dyds.Ua),
-            "dyds_theta_a": float(dyds.theta_a),
-            "dyds_Df": float(dyds.Df),
-            "dyds_Da": float(dyds.Da),
+            # "dyds_Uf": float(dyds.Uf),
+            # "dyds_theta_f": float(dyds.theta_f),
+            # "dyds_Ua": float(dyds.Ua),
+            # "dyds_theta_a": float(dyds.theta_a),
+            # "dyds_Df": float(dyds.Df),
+            # "dyds_Da": float(dyds.Da),
         }
         vectors = {
             "theta_s_deg": np.rad2deg(yc.theta_s),
