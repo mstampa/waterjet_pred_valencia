@@ -18,18 +18,25 @@ from .panels import (
     build_transfer_radial_panel,
     build_transfer_stream_panel,
 )
+from .helpers import add_breakup_marker
 from .style import configure_linear_grid_density
 
 logger = logging.getLogger(__name__)
 
 
-def save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
+def save_plot(
+    source: ColumnDataSource,
+    s_end: float,
+    path: Path,
+    s_breakup: float | None = None,
+) -> None:
     """Render and save the complete multi-panel simulation plot.
 
     Args:
         source: Prepared bokeh datasource with plotting columns.
         s_end: Maximum s-value used for horizontal range limits.
         path: Output path for the generated html file.
+        s_breakup: Optional breakup location to draw as dotted vertical marker.
     """
 
     logger.info(f"Saving plot to {path}...")
@@ -49,6 +56,18 @@ def save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
     p_mass = build_transfer_mass_panel(source, x_range)
     p_mom_stream = build_transfer_stream_panel(source, x_range)
     p_mom_radial = build_transfer_radial_panel(source, x_range)
+
+    for panel in [
+        p_speeds,
+        p_diameters,
+        p_angles,
+        p_nd,
+        p_rho,
+        p_mass,
+        p_mom_stream,
+        p_mom_radial,
+    ]:
+        add_breakup_marker(panel, s_breakup=s_breakup)
 
     configure_linear_grid_density(
         [

@@ -3,7 +3,7 @@
 from typing import Sequence
 
 import numpy as np
-from bokeh.models import ColumnDataSource, HoverTool, Label, Range1d
+from bokeh.models import ColumnDataSource, HoverTool, Label, Range1d, Span
 from bokeh.models.renderers import GlyphRenderer
 from bokeh.plotting import figure
 
@@ -213,6 +213,29 @@ def add_hover_tool(
     if renderer is not None:
         hover.renderers = [renderer]
     fig.add_tools(hover)
+    return
+
+
+def add_breakup_marker(fig, s_breakup: float | None) -> None:
+    """Add a vertical dotted breakup marker for panels using s on x-axis.
+
+    Args:
+        fig: Bokeh figure to augment.
+        s_breakup: Breakup location along streamwise axis [m]. If None, no marker is added.
+    """
+
+    if s_breakup is None:
+        return
+
+    fig.add_layout(
+        Span(
+            location=s_breakup,
+            dimension="height",
+            line_color="#4b4b4b",
+            line_width=2,
+            line_dash="dotted",
+        )
+    )
     return
 
 

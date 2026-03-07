@@ -12,6 +12,7 @@ from typing import Dict, Optional
 from pandas import DataFrame
 
 from .logging import configure_logging
+from .parameters import get_breakup_distance
 from .plotting import plot_solution, plot_trace
 from .simulator import simulate
 from .tracer import Tracer
@@ -52,10 +53,11 @@ def run_simulation(args: Namespace) -> None:
 
     # Tracer records the state of most variables at regular intervals.
     # The recording is used to generate plots of both successful and failed simulations.
-    tracer = Tracer()
+    tracer: Tracer = Tracer()
+    s_breakup: float = get_breakup_distance(args.nozzle)
 
     logger.info("Starting simulation...")
-    start_time = perf_counter()
+    start_time: float = perf_counter()
     failed_error: Optional[Exception] = None
     result = None
     try:
@@ -81,9 +83,11 @@ def run_simulation(args: Namespace) -> None:
         if failed_error is None:
             assert result is not None
             assert result.sol is not None
-            plot_solution(result.sol, result.state_idx, args.output)
+            plot_solution(
+                result.sol, result.state_idx, args.output, s_breakup=s_breakup
+            )
         elif not trace_df.empty:
-            plot_trace(trace_df, args.output)
+            plot_trace(trace_df, args.output, s_breakup=s_breakup)
         else:
             logger.warning("Simulation failed before any trace rows were recorded.")
 
@@ -91,8 +95,8 @@ def run_simulation(args: Namespace) -> None:
             path_csv: Path = Path(args.csv)
             tracer.to_csv(path_csv)
 
-    if failed_error is not None:
-        raise failed_error
+    # if failed_error is not None:
+    #     raise failed_error
 
     return
 

@@ -13,30 +13,41 @@ from .source import build_source_from_solution, build_source_from_trace
 logger = logging.getLogger(__name__)
 
 
-def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None:
+def plot_solution(
+    sol: OdeResult,
+    state_idx: Dict[str, int],
+    path: Path,
+    s_breakup: float | None = None,
+) -> None:
     """Plot trajectory and variable evolution from a successful ODE result.
 
     Args:
         sol: ODE solution object from solve_ivp.
         state_idx: Mapping of variable names to indices in sol.y.
         path: Path to export the plot to (html).
+        s_breakup: Optional breakup location shown as dotted vertical marker.
     """
 
     logger.info("Plotting OdeResult...")
     source, s_end = build_source_from_solution(sol, state_idx)
-    save_plot(source=source, s_end=s_end, path=path)
+    save_plot(source=source, s_end=s_end, path=path, s_breakup=s_breakup)
     return
 
 
-def plot_trace(trace_df: DataFrame, path: Path) -> None:
+def plot_trace(
+    trace_df: DataFrame,
+    path: Path,
+    s_breakup: float | None = None,
+) -> None:
     """Plot trajectory and variable evolution from traced partial data.
 
     Args:
         trace_df: Wide trace dataframe produced by Tracer.to_wide_dataframe().
         path: Path to export the plot to (html).
+        s_breakup: Optional breakup location shown as dotted vertical marker.
     """
 
     logger.info("Plotting traced partial results...")
     source, s_end = build_source_from_trace(trace_df)
-    save_plot(source=source, s_end=s_end, path=path)
+    save_plot(source=source, s_end=s_end, path=path, s_breakup=s_breakup)
     return

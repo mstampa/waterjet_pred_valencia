@@ -156,9 +156,26 @@ def simulate(
     # This is where the number magic happens!
     state_idx: Dict[str, int] = get_state_index_map()
     sol: OdeResult
+    last_s: float = np.nan
+
+    def ode_rhs_with_progress(s: float, y: NDArray[DTYPE]) -> NDArray[DTYPE]:
+        """Evaluate RHS while retaining the latest streamwise coordinate 's'.
+
+        Args:
+            s: Current position along streamwise axis [m].
+            y: Current state vector.
+
+        Returns:
+            Derivatives of the state vector at s.
+        """
+        nonlocal last_s
+        last_s = float(s)
+        return ode_right_hand_side(s, y, params=params, bypass=bypass, tracer=tracer)
+
+    # This is where the number magic happens!
     try:
         sol = solve_ivp(
-            partial(ode_right_hand_side, params=params, bypass=bypass, tracer=tracer),
+            ode_rhs_with_progress,
             s_span,
             y0=initial_state_vec.to_array(),
             method=method,
@@ -167,7 +184,7 @@ def simulate(
             events=[ev_ground, ev_mass],
         )
     except Exception as e:
-        logger.error(f"{e}")
+        logger.error(f"At s={last_s:.4f} m: {e}")
         if debug:
             # Automatically drop into debugger.
             import pdb
