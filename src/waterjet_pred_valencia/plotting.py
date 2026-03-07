@@ -1,8 +1,9 @@
-"""Uses bokeh to plot simulation results and export interactive HTML."""
+"""Plot simulation results with bokeh and export interactive HTML."""
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Callable, Dict, Iterable, Sequence, Tuple
 
 import numpy as np
 from bokeh.layouts import column, row
@@ -18,7 +19,6 @@ from .parameters import num_drop_classes
 
 logger = logging.getLogger(__name__)
 
-# Fixed colors for consistent phase coloring across all plots.
 PHASE_COLORS: Dict[str, str] = {
     "core": Colorblind5[2],
     "air": Colorblind5[1],
@@ -31,14 +31,39 @@ DEFAULT_TOOLS = "pan,wheel_zoom,box_zoom,reset,save"
 DESIRED_MAJOR_TICKS = 10
 
 
+@dataclass(frozen=True)
+class SeriesSpec:
+    """Description for rendering one standard line series."""
+
+    field: str
+    label: str
+    color: str
+    width: int = 2
+    alpha: float = 1.0
+    dash: str = "solid"
+
+
+@dataclass(frozen=True)
+class TransferSpec:
+    """Description for rendering one transfer-term series."""
+
+    field: str
+    source_phase: str
+    target_phase: str
+    total: bool = False
+    width: int = 2
+    alpha: float = 1.0
+
+
 def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None:
-    """Plot trajectory and variable evolution based on a successful ODE result.
+    """Plot trajectory and variable evolution from a successful ODE result.
 
     Args:
         sol: ODE solution object from solve_ivp.
         state_idx: Mapping of variable names to indices in sol.y.
         path: Path to export the plot to (html).
     """
+
     logger.info("Plotting OdeResult...")
     source, s_end = _build_source_from_solution(sol, state_idx)
     _save_plot(source=source, s_end=s_end, path=path)
@@ -46,12 +71,13 @@ def plot_solution(sol: OdeResult, state_idx: Dict[str, int], path: Path) -> None
 
 
 def plot_trace(trace_df: DataFrame, path: Path) -> None:
-    """Plot trajectory and variable evolution based on traced partial data.
+    """Plot trajectory and variable evolution from traced partial data.
 
     Args:
         trace_df: Wide trace dataframe produced by Tracer.to_wide_dataframe().
         path: Path to export the plot to (html).
     """
+
     logger.info("Plotting traced partial results...")
     source, s_end = _build_source_from_trace(trace_df)
     _save_plot(source=source, s_end=s_end, path=path)
@@ -71,9 +97,7 @@ def _build_source_from_solution(
         Tuple of bokeh data source and maximum plotted s-value.
     """
 
-    # Last s value to plot (termination event or predefined simulation span).
-    s_end: float = float(sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1])
-
+    s_end = float(sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1])
     n_rows = sol.t.size
     nan_series = np.full((n_rows,), np.nan, dtype=float)
 
@@ -122,8 +146,7 @@ def _build_source_from_solution(
         data[f"f_s2sur_{i}"] = nan_series.copy()
         data[f"f_rs2sur_{i}"] = nan_series.copy()
 
-    source = ColumnDataSource(data=data)
-    return source, s_end
+    return ColumnDataSource(data=data), s_end
 
 
 def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, float]:
@@ -195,16 +218,466 @@ def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, flo
         data[f"f_s2sur_{i}"] = _trace_col(f"f_s2sur[{i}]")
         data[f"f_rs2sur_{i}"] = _trace_col(f"f_rs2sur[{i}]")
 
-    source = ColumnDataSource(data=data)
-
     finite_s = s[np.isfinite(s)]
     if finite_s.size == 0:
         raise ValueError(
             "Trace dataframe has no finite 's' values; can not generate plot."
         )
 
-    s_end = float(np.max(finite_s))
-    return source, s_end
+    return ColumnDataSource(data=data), float(np.max(finite_s))
+
+
+def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
+    """Render and save the complete multi-panel simulation plot.
+
+    Args:
+        source: Prepared bokeh datasource with plotting columns.
+        s_end: Maximum s-value used for horizontal range limits.
+        path: Output path for the generated html file.
+    """
+
+    logger.info(f"Saving plot to {path}...")
+    path_str = str(path)
+    assert path_str.endswith("html"), (
+        f"Path suffix must be .html, but is {path.suffix}."
+    )
+    output_file(path_str, title="Fire stream simulation")
+
+    x_range = Range1d(0.0, s_end + 0.1)
+    p_traj = _build_trajectory_panel(source)
+    p_speeds = _build_speed_panel(source, x_range)
+    p_diameters = _build_diameter_panel(source, x_range)
+    p_angles = _build_angle_panel(source, x_range)
+    p_nd = _build_nd_panel(source, x_range)
+    p_rho = _build_rho_panel(source, x_range)
+    p_mom_stream = _build_transfer_stream_panel(source, x_range)
+    p_mom_radial = _build_transfer_radial_panel(source, x_range)
+    p_mass = _build_transfer_mass_panel(source, x_range)
+
+    plot_layout = column(
+        p_traj,
+        row(p_speeds, p_diameters, sizing_mode="stretch_width"),
+        row(p_angles, p_nd, sizing_mode="stretch_width"),
+        p_rho,
+        row(p_mom_stream, p_mom_radial, sizing_mode="stretch_width"),
+        p_mass,
+        sizing_mode="stretch_width",
+    )
+    save(plot_layout)
+    logger.info("Plot saved.")
+    return
+
+
+def _build_trajectory_panel(source: ColumnDataSource):
+    """Create trajectory panel with stream-width patch and hover."""
+
+    x_max = _finite_max(source, "x")
+    y_max = _finite_max(source, "y")
+    p = _new_panel(
+        title="Fire stream trajectory",
+        x_axis_label="x / m",
+        y_axis_label="y / m",
+        x_range=Range1d(0.0, x_max + 0.5),
+        y_range=Range1d(0.0, y_max + 0.5),
+        match_aspect=True,
+    )
+    renderer = p.line(
+        "x",
+        "y",
+        source=source,
+        line_width=2,
+        color=PHASE_COLORS["stream"],
+        legend_label="Trajectory",
+    )
+    p.legend.location = "top_left"
+    _add_stream_width_patch(p, source)
+    _configure_linear_grid_density([p])
+    _add_hover_tool(
+        p,
+        [
+            ("x", "@x{0.000}"),
+            ("y", "@y{0.000}"),
+            ("s", "@s{0.000}"),
+            ("Df", "@Df{0.0000}"),
+        ],
+        renderer=renderer,
+    )
+    return p
+
+
+def _build_speed_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create phase-speed panel using series specs."""
+
+    fields = ["Uc", "Ua", "Uf"] + [f"Us_{i}" for i in range(num_drop_classes)]
+    speed_max = _finite_max(source, *fields)
+    p = _new_panel(
+        title="Phase speeds",
+        x_axis_label="Streamwise position s / m",
+        y_axis_label="Speed / m/s",
+        x_range=x_range,
+        y_range=Range1d(0.0, speed_max + 0.5),
+    )
+    specs = [
+        SeriesSpec("Uc", "Uc", PHASE_COLORS["core"]),
+        SeriesSpec("Ua", "Ua", PHASE_COLORS["air"]),
+        SeriesSpec("Uf", "Uf", PHASE_COLORS["stream"]),
+        *[
+            SeriesSpec(f"Us_{i}", f"Us{i}", SPRAY_COLORS[i])
+            for i in range(num_drop_classes)
+        ],
+    ]
+    primary = _add_series_from_specs(p, source, specs)
+    p.legend.location = "bottom_left"
+    _configure_linear_grid_density([p])
+    _add_hover_tool(
+        p,
+        [
+            ("s", "@s{0.000}"),
+            ("Uc", "@Uc{0.000}"),
+            ("Ua", "@Ua{0.000}"),
+            ("Uf", "@Uf{0.000}"),
+        ]
+        + [(f"Us{i}", f"@Us_{i}{{0.000}}") for i in range(num_drop_classes)],
+        renderer=primary,
+    )
+    return p
+
+
+def _build_diameter_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create phase-diameter panel using series specs."""
+
+    dmax = _finite_max(source, "Dc", "Da", "Df")
+    p = _new_panel(
+        title="Phase diameters",
+        x_axis_label="Streamwise position s / m",
+        y_axis_label="diameter / m",
+        x_range=x_range,
+        y_range=Range1d(0.0, dmax),
+    )
+    specs = [
+        SeriesSpec("Dc", "Dc", PHASE_COLORS["core"]),
+        SeriesSpec("Da", "Da", PHASE_COLORS["air"]),
+        SeriesSpec("Df", "Df", PHASE_COLORS["stream"]),
+    ]
+    primary = _add_series_from_specs(p, source, specs)
+    p.legend.location = "top_left"
+    _configure_linear_grid_density([p])
+    _add_hover_tool(
+        p,
+        [
+            ("s", "@s{0.000}"),
+            ("Dc", "@Dc{0.0000}"),
+            ("Da", "@Da{0.0000}"),
+            ("Df", "@Df{0.0000}"),
+        ],
+        renderer=primary,
+    )
+    return p
+
+
+def _build_angle_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create phase-angle panel using series specs."""
+
+    p = _new_panel(
+        title="Phase angles (above horizon)",
+        x_axis_label="Streamwise position s / m",
+        y_axis_label="Angle / deg",
+        x_range=x_range,
+        y_range=Range1d(-90.0, 90.0),
+    )
+    specs = [
+        SeriesSpec("theta_a_deg", "theta_a", PHASE_COLORS["air"]),
+        SeriesSpec("theta_f_deg", "theta_f", PHASE_COLORS["stream"]),
+        *[
+            SeriesSpec(f"theta_s_deg_{i}", f"theta_s{i}", SPRAY_COLORS[i])
+            for i in range(num_drop_classes)
+        ],
+    ]
+    primary = _add_series_from_specs(p, source, specs)
+    p.legend.location = "bottom_left"
+    _configure_linear_grid_density([p])
+    _add_hover_tool(
+        p,
+        [
+            ("s", "@s{0.000}"),
+            ("theta_a", "@theta_a_deg{0.00}"),
+            ("theta_f", "@theta_f_deg{0.00}"),
+        ]
+        + [
+            (f"theta_s{i}", f"@theta_s_deg_{i}{{0.00}}")
+            for i in range(num_drop_classes)
+        ],
+        renderer=primary,
+    )
+    return p
+
+
+def _build_nd_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create drop-count panel with log y-axis."""
+
+    nd_min, nd_max = _log_range_from_fields(
+        source, [f"ND_{i}" for i in range(num_drop_classes)]
+    )
+    p = _new_panel(
+        title="Drop count",
+        x_axis_label="Streamwise position s / m",
+        y_axis_label="ND / drops/s",
+        x_range=x_range,
+        y_range=Range1d(nd_min, nd_max),
+        y_axis_type="log",
+    )
+    specs = [
+        SeriesSpec(f"ND_{i}", f"ND{i}", SPRAY_COLORS[i])
+        for i in range(num_drop_classes)
+    ]
+    primary = _add_series_from_specs(p, source, specs)
+    p.legend.location = "bottom_right"
+    _add_hover_tool(
+        p,
+        [("s", "@s{0.000}")]
+        + [(f"ND{i}", f"@ND_{i}{{0.00}}") for i in range(num_drop_classes)],
+        renderer=primary,
+    )
+    return p
+
+
+def _build_rho_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create stream density panel."""
+
+    p = _new_panel(
+        title="Stream density",
+        x_axis_label="Streamwise position s / m",
+        y_axis_label="Density / kg/m³",
+        x_range=x_range,
+        y_range=Range1d(0.0, 1000.0),
+        height=300,
+    )
+    primary = _add_series_from_specs(
+        p,
+        source,
+        [SeriesSpec("rho_f", "rho_f", PHASE_COLORS["stream"])],
+    )
+    _configure_linear_grid_density([p])
+    _add_hover_tool(
+        p, [("s", "@s{0.000}"), ("rho_f", "@rho_f{0.00}")], renderer=primary
+    )
+    return p
+
+
+def _build_transfer_mass_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create mass-transfer panel using transfer specs."""
+
+    specs = [
+        TransferSpec("m_sur2f", "sur", "stream"),
+        TransferSpec("m_a2sur", "air", "sur"),
+        TransferSpec("m_c2s_total", "core", "spray_mid", total=True),
+        TransferSpec("m_s2sur_total", "spray_mid", "sur", total=True),
+        *[
+            TransferSpec(f"m_c2s_{i}", "core", f"spray_{i}", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+        *[
+            TransferSpec(f"m_s2sur_{i}", f"spray_{i}", "sur", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+    ]
+    return _build_transfer_panel(
+        title="Mass transfer terms",
+        y_axis_label="Mass transfer / kg/(m*s)",
+        source=source,
+        x_range=x_range,
+        specs=specs,
+        hover_rows=[
+            ("s", "@s{0.000}"),
+            ("m_sur2f", "@m_sur2f{0.0000}"),
+            ("m_a2sur", "@m_a2sur{0.0000}"),
+            ("m_c2s_total", "@m_c2s_total{0.0000}"),
+            ("m_s2sur_total", "@m_s2sur_total{0.0000}"),
+        ],
+        primary_field="m_sur2f",
+    )
+
+
+def _build_transfer_stream_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create streamwise momentum-transfer panel using transfer specs."""
+
+    specs = [
+        TransferSpec("f_a2sur", "air", "sur"),
+        TransferSpec("f_c2a", "core", "air"),
+        TransferSpec("f_s2a_total", "spray_mid", "air", total=True),
+        TransferSpec("f_s2sur_total", "spray_mid", "sur", total=True),
+        TransferSpec("f_c2s_total", "core", "spray_mid", total=True),
+        *[
+            TransferSpec(f"f_c2s_{i}", "core", f"spray_{i}", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+        *[
+            TransferSpec(f"f_s2a_{i}", f"spray_{i}", "air", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+        *[
+            TransferSpec(f"f_s2sur_{i}", f"spray_{i}", "sur", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+    ]
+    return _build_transfer_panel(
+        title="Momentum transfer terms (streamwise)",
+        y_axis_label="Momentum transfer / N/m",
+        source=source,
+        x_range=x_range,
+        specs=specs,
+        hover_rows=[
+            ("s", "@s{0.000}"),
+            ("f_a2sur", "@f_a2sur{0.0000}"),
+            ("f_c2a", "@f_c2a{0.0000}"),
+            ("f_s2a_total", "@f_s2a_total{0.0000}"),
+            ("f_s2sur_total", "@f_s2sur_total{0.0000}"),
+            ("f_c2s_total", "@f_c2s_total{0.0000}"),
+        ],
+        primary_field="f_a2sur",
+    )
+
+
+def _build_transfer_radial_panel(source: ColumnDataSource, x_range: Range1d):
+    """Create radial momentum-transfer panel using transfer specs."""
+
+    specs = [
+        TransferSpec("f_ra2sur", "air", "sur"),
+        TransferSpec("f_rc2a", "core", "air"),
+        TransferSpec("f_rs2a_total", "spray_mid", "air", total=True),
+        TransferSpec("f_rs2sur_total", "spray_mid", "sur", total=True),
+        TransferSpec("f_rc2s_total", "core", "spray_mid", total=True),
+        *[
+            TransferSpec(f"f_rc2s_{i}", "core", f"spray_{i}", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+        *[
+            TransferSpec(f"f_rs2a_{i}", f"spray_{i}", "air", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+        *[
+            TransferSpec(f"f_rs2sur_{i}", f"spray_{i}", "sur", width=1, alpha=0.8)
+            for i in range(num_drop_classes)
+        ],
+    ]
+    return _build_transfer_panel(
+        title="Momentum transfer terms (radial)",
+        y_axis_label="Momentum transfer / N/m",
+        source=source,
+        x_range=x_range,
+        specs=specs,
+        hover_rows=[
+            ("s", "@s{0.000}"),
+            ("f_ra2sur", "@f_ra2sur{0.0000}"),
+            ("f_rc2a", "@f_rc2a{0.0000}"),
+            ("f_rs2a_total", "@f_rs2a_total{0.0000}"),
+            ("f_rs2sur_total", "@f_rs2sur_total{0.0000}"),
+            ("f_rc2s_total", "@f_rc2s_total{0.0000}"),
+        ],
+        primary_field="f_ra2sur",
+    )
+
+
+def _build_transfer_panel(
+    title: str,
+    y_axis_label: str,
+    source: ColumnDataSource,
+    x_range: Range1d,
+    specs: Sequence[TransferSpec],
+    hover_rows: list[tuple[str, str]],
+    primary_field: str,
+):
+    """Create one transfer panel from declarative transfer specs."""
+
+    p = _new_panel(
+        title=title,
+        x_axis_label="Streamwise position s / m",
+        y_axis_label=y_axis_label,
+        x_range=x_range,
+    )
+    primary_renderer: GlyphRenderer | None = None
+    for spec in specs:
+        renderer = _plot_transfer_term(
+            fig=p,
+            source=source,
+            y_field=spec.field,
+            source_color=_resolve_phase_color(spec.source_phase),
+            target_color=_resolve_phase_color(spec.target_phase),
+            dashed=spec.total,
+            line_width=spec.width,
+            line_alpha=spec.alpha,
+        )
+        if spec.field == primary_field:
+            primary_renderer = renderer
+
+    _add_transfer_encoding_note(p)
+    _configure_linear_grid_density([p])
+    _add_hover_tool(p, hover_rows, renderer=primary_renderer)
+    return p
+
+
+def _new_panel(
+    title: str,
+    x_axis_label: str,
+    y_axis_label: str,
+    x_range: Range1d,
+    y_range: Range1d | None = None,
+    y_axis_type: str = "linear",
+    height: int | None = None,
+    match_aspect: bool = False,
+):
+    """Create a panel with shared plotting defaults."""
+
+    kwargs = {
+        "title": title,
+        "x_axis_label": x_axis_label,
+        "y_axis_label": y_axis_label,
+        "x_range": x_range,
+        "sizing_mode": "stretch_width",
+        "tools": DEFAULT_TOOLS,
+        "y_axis_type": y_axis_type,
+    }
+    if y_range is not None:
+        kwargs["y_range"] = y_range
+    if height is not None:
+        kwargs["height"] = height
+    if match_aspect:
+        kwargs["match_aspect"] = True
+    return figure(**kwargs)
+
+
+def _add_series_from_specs(
+    fig,
+    source: ColumnDataSource,
+    specs: Sequence[SeriesSpec],
+) -> GlyphRenderer:
+    """Render line series based on declarative series specs.
+
+    Args:
+        fig: Bokeh figure to draw on.
+        source: Shared data source.
+        specs: Sequence of line-series specs.
+
+    Returns:
+        Renderer of the first plotted series (for hover anchoring).
+    """
+
+    primary: GlyphRenderer | None = None
+    for spec in specs:
+        renderer = fig.line(
+            "s",
+            spec.field,
+            source=source,
+            line_width=spec.width,
+            line_alpha=spec.alpha,
+            line_color=spec.color,
+            line_dash=spec.dash,
+            legend_label=spec.label,
+        )
+        if primary is None:
+            primary = renderer
+    assert primary is not None
+    return primary
 
 
 def _plot_transfer_term(
@@ -212,30 +685,29 @@ def _plot_transfer_term(
     source: ColumnDataSource,
     y_field: str,
     source_color: str,
-    target_color: str | None,
+    target_color: str,
     dashed: bool = False,
     line_width: int = 2,
     line_alpha: float = 1.0,
     marker_step: int = 16,
 ) -> GlyphRenderer:
-    """Plot a transfer-term line with optional target markers.
+    """Plot transfer term as source-colored line with target-colored markers.
 
     Args:
-        fig: Bokeh figure to plot on.
-        source: Main datasource containing s and transfer-term columns.
-        y_field: Column name of the plotted transfer-term.
-        source_color: Color encoding the source phase.
-        target_color: Color encoding the target phase. If None, no markers are added.
-        dashed: Whether to draw the line as dashed (used for totals).
+        fig: Bokeh figure to draw on.
+        source: Shared data source.
+        y_field: Data column name.
+        source_color: Color representing source phase.
+        target_color: Color representing target phase.
+        dashed: Whether to draw the term as dashed (used for totals).
         line_width: Width of the line glyph.
-        line_alpha: Alpha of the line glyph.
-        marker_step: Point spacing for marker decimation.
+        line_alpha: Opacity of line glyph.
+        marker_step: Index stride for marker decimation.
 
     Returns:
         Renderer of the line glyph.
     """
 
-    line_dash = "dashed" if dashed else "solid"
     renderer = fig.line(
         "s",
         y_field,
@@ -243,22 +715,18 @@ def _plot_transfer_term(
         line_width=line_width,
         line_alpha=line_alpha,
         line_color=source_color,
-        line_dash=line_dash,
+        line_dash="dashed" if dashed else "solid",
     )
-
-    if target_color is None:
-        return renderer
 
     x_vals = np.asarray(source.data["s"], dtype=float)
     y_vals = np.asarray(source.data[y_field], dtype=float)
-    valid = np.isfinite(x_vals) & np.isfinite(y_vals)
-    idx = np.where(valid)[0]
-    if idx.size == 0:
+    valid_idx = np.where(np.isfinite(x_vals) & np.isfinite(y_vals))[0]
+    if valid_idx.size == 0:
         return renderer
 
-    marker_idx = idx[:: max(1, marker_step)]
+    marker_idx = valid_idx[:: max(1, marker_step)]
     marker_source = ColumnDataSource(
-        data={"s": x_vals[marker_idx], y_field: y_vals[marker_idx]}
+        {"s": x_vals[marker_idx], y_field: y_vals[marker_idx]}
     )
     fig.scatter(
         "s",
@@ -274,591 +742,50 @@ def _plot_transfer_term(
     return renderer
 
 
+def _resolve_phase_color(token: str) -> str:
+    """Resolve a phase token to its plot color.
+
+    Args:
+        token: Phase token such as core/air/stream/sur/spray_i/spray_mid.
+
+    Returns:
+        Hex or named color string.
+    """
+
+    if token in PHASE_COLORS:
+        return PHASE_COLORS[token]
+    if token == "sur":
+        return SURROUNDINGS_COLOR
+    if token == "spray_mid":
+        return SPRAY_COLORS[min(2, num_drop_classes - 1)]
+    if token.startswith("spray_"):
+        idx = int(token.split("_")[1])
+        return SPRAY_COLORS[idx]
+    raise KeyError(f"Unknown phase color token: {token}")
+
+
 def _add_transfer_encoding_note(fig) -> None:
-    """Add a compact note explaining source/target encoding for transfer plots.
+    """Add transfer encoding note to the upper-left corner.
 
     Args:
         fig: Bokeh figure to annotate.
     """
-    note = Label(
-        x=8,
-        y=8,
-        x_units="screen",
-        y_units="screen",
-        text="line=source, marker=target, dashed=total, grey=surroundings",
-        text_font_size="9pt",
-        text_color="#303030",
-        background_fill_color="#ffffff",
-        background_fill_alpha=0.8,
-    )
-    fig.add_layout(note)
-    return
 
-
-def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
-    """Render and save the standard multi-panel simulation plot.
-
-    Args:
-        source: Prepared bokeh data source with plotting columns.
-        s_end: Maximum s-value used for horizontal range limits.
-        path: Output path for the generated html file.
-    """
-
-    logger.info(f"Saving plot to {path}...")
-    logger.info(f"Maximum s-value: {s_end} m")
-
-    path_str = str(path)
-    assert path_str.endswith("html"), (
-        f"Path suffix must be .html, but is {path.suffix}."
-    )
-    output_file(path_str, title="Fire stream simulation")
-
-    x_vals = np.asarray(source.data["x"], dtype=float)
-    y_vals = np.asarray(source.data["y"], dtype=float)
-    finite_x = x_vals[np.isfinite(x_vals)]
-    finite_y = y_vals[np.isfinite(y_vals)]
-    x_max = float(np.max(finite_x)) if finite_x.size > 0 else 0.0
-    y_max = float(np.max(finite_y)) if finite_y.size > 0 else 0.0
-
-    p_traj = figure(
-        title="Fire stream trajectory",
-        x_axis_label="x / m",
-        y_axis_label="y / m",
-        x_range=Range1d(0.0, x_max + 1.0),
-        y_range=Range1d(0.0, y_max + 1.0),
-        match_aspect=True,
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    traj_renderer = p_traj.line(
-        "x",
-        "y",
-        source=source,
-        line_width=2,
-        color=PHASE_COLORS["stream"],
-        legend_label="Trajectory",
-    )
-    p_traj.legend.location = "top_left"
-    _add_stream_width_patch(p_traj, source)
-    _configure_linear_grid_density([p_traj])
-    _add_hover_tool(
-        p_traj,
-        [
-            ("x", "@x{0.000}"),
-            ("y", "@y{0.000}"),
-            ("s", "@s{0.000}"),
-            ("Df", "@Df{0.0000}"),
-        ],
-        renderer=traj_renderer,
-    )
-
-    x_axis_label = "Streamwise position s / m"
-    x_range = Range1d(0, s_end + 0.1)
-
-    speed_max = 0.0
-    speed_keys = ["Uc", "Ua", "Uf"] + [f"Us_{i}" for i in range(num_drop_classes)]
-    for key in speed_keys:
-        vals = np.asarray(source.data[key], dtype=float)
-        finite = vals[np.isfinite(vals)]
-        if finite.size > 0:
-            speed_max = max(speed_max, float(np.max(finite)))
-
-    p_speeds = figure(
-        title="Phase speeds",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Speed / m/s",
-        y_range=Range1d(0.0, speed_max + 0.5),
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    uc_renderer = p_speeds.line(
-        "s",
-        "Uc",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        legend_label="Uc",
-    )
-    p_speeds.line(
-        "s",
-        "Ua",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="Ua",
-    )
-    p_speeds.line(
-        "s",
-        "Uf",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["stream"],
-        legend_label="Uf",
-    )
-    for i in range(num_drop_classes):
-        p_speeds.line(
-            "s",
-            f"Us_{i}",
-            source=source,
-            line_width=2,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"Us{i}",
+    y_screen = (fig.height if fig.height is not None else 300) - 12
+    fig.add_layout(
+        Label(
+            x=8,
+            y=y_screen,
+            x_units="screen",
+            y_units="screen",
+            text="line=source, marker=target, dashed=total, grey=surroundings",
+            text_font_size="9pt",
+            text_color="#303030",
+            text_baseline="top",
+            background_fill_color="#ffffff",
+            background_fill_alpha=0.7,
         )
-    p_speeds.legend.location = "bottom_left"
-    _configure_linear_grid_density([p_speeds])
-    _add_hover_tool(
-        p_speeds,
-        [
-            ("s", "@s{0.000}"),
-            ("Uc", "@Uc{0.000}"),
-            ("Ua", "@Ua{0.000}"),
-            ("Uf", "@Uf{0.000}"),
-            *[(f"Us{i}", f"@Us_{i}{{0.000}}") for i in range(num_drop_classes)],
-        ],
-        renderer=uc_renderer,
     )
-
-    diameter_max = 0.0
-    for key in ("Dc", "Da", "Df"):
-        vals = np.asarray(source.data[key], dtype=float)
-        finite = vals[np.isfinite(vals)]
-        if finite.size > 0:
-            diameter_max = max(diameter_max, float(np.max(finite)))
-    p_diameters = figure(
-        title="Phase diameters",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="diameter / m",
-        y_range=Range1d(0.0, diameter_max),
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    dc_renderer = p_diameters.line(
-        "s",
-        "Dc",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        legend_label="Dc",
-    )
-    p_diameters.line(
-        "s",
-        "Da",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="Da",
-    )
-    p_diameters.line(
-        "s",
-        "Df",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["stream"],
-        legend_label="Df",
-    )
-    p_diameters.legend.location = "top_left"
-    _configure_linear_grid_density([p_diameters])
-    _add_hover_tool(
-        p_diameters,
-        [
-            ("s", "@s{0.000}"),
-            ("Dc", "@Dc{0.0000}"),
-            ("Da", "@Da{0.0000}"),
-            ("Df", "@Df{0.0000}"),
-        ],
-        renderer=dc_renderer,
-    )
-
-    p_angles = figure(
-        title="Phase angles (above horizon)",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Angle / deg",
-        y_range=Range1d(-90.0, 90.0),
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    theta_a_renderer = p_angles.line(
-        "s",
-        "theta_a_deg",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="theta_a",
-    )
-    p_angles.line(
-        "s",
-        "theta_f_deg",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["stream"],
-        legend_label="theta_f",
-    )
-    for i in range(num_drop_classes):
-        p_angles.line(
-            "s",
-            f"theta_s_deg_{i}",
-            source=source,
-            line_width=2,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"theta_s{i}",
-        )
-    p_angles.legend.location = "bottom_left"
-    _configure_linear_grid_density([p_angles])
-    _add_hover_tool(
-        p_angles,
-        [
-            ("s", "@s{0.000}"),
-            ("theta_a", "@theta_a_deg{0.00}"),
-            ("theta_f", "@theta_f_deg{0.00}"),
-            *[
-                (f"theta_s{i}", f"@theta_s_deg_{i}{{0.00}}")
-                for i in range(num_drop_classes)
-            ],
-        ],
-        renderer=theta_a_renderer,
-    )
-
-    nd_min_positive = np.inf
-    nd_max = 0.0
-    for i in range(num_drop_classes):
-        nd_vals = np.asarray(source.data[f"ND_{i}"], dtype=float)
-        finite_positive = nd_vals[np.isfinite(nd_vals) & (nd_vals > 0.0)]
-        if finite_positive.size > 0:
-            nd_min_positive = min(nd_min_positive, float(np.min(finite_positive)))
-            nd_max = max(nd_max, float(np.max(finite_positive)))
-
-    if not np.isfinite(nd_min_positive):
-        nd_min_positive = 1e-3
-    if nd_max <= 0.0:
-        nd_max = 1.0
-    nd_y_start = max(1e-6, nd_min_positive * 0.5)
-    nd_y_end = max(nd_y_start * 10.0, nd_max * 1.2)
-
-    p_nd = figure(
-        title="Drop count",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="ND / drops/s",
-        y_axis_type="log",
-        y_range=Range1d(nd_y_start, nd_y_end),
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-
-    nd_renderer: GlyphRenderer | None = None
-    for i in range(num_drop_classes):
-        renderer = p_nd.line(
-            "s",
-            f"ND_{i}",
-            source=source,
-            line_width=2,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"ND{i}",
-        )
-        if nd_renderer is None:
-            nd_renderer = renderer
-    p_nd.legend.location = "bottom_right"
-    _add_hover_tool(
-        p_nd,
-        [
-            ("s", "@s{0.000}"),
-            *[(f"ND{i}", f"@ND_{i}{{0.00}}") for i in range(num_drop_classes)],
-        ],
-        renderer=nd_renderer,
-    )
-
-    p_rho = figure(
-        title="Stream density",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Density / kg/m³",
-        y_range=Range1d(0.0, 1000.0),
-        sizing_mode="stretch_width",
-        height=300,
-        tools=DEFAULT_TOOLS,
-    )
-    rho_renderer = p_rho.line(
-        "s",
-        "rho_f",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["stream"],
-        legend_label="rho_f",
-    )
-    _configure_linear_grid_density([p_rho])
-    _add_hover_tool(
-        p_rho,
-        [
-            ("s", "@s{0.000}"),
-            ("rho_f", "@rho_f{0.00}"),
-        ],
-        renderer=rho_renderer,
-    )
-
-    p_mass = figure(
-        title="Mass transfer terms",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Mass transfer / kg/(m*s)",
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    mass_renderer = _plot_transfer_term(
-        p_mass,
-        source,
-        y_field="m_sur2f",
-        source_color=SURROUNDINGS_COLOR,
-        target_color=PHASE_COLORS["stream"],
-    )
-    _plot_transfer_term(
-        p_mass,
-        source,
-        y_field="m_a2sur",
-        source_color=PHASE_COLORS["air"],
-        target_color=SURROUNDINGS_COLOR,
-    )
-    _plot_transfer_term(
-        p_mass,
-        source,
-        y_field="m_c2s_total",
-        source_color=PHASE_COLORS["core"],
-        target_color=SPRAY_COLORS[2],
-        dashed=True,
-    )
-    _plot_transfer_term(
-        p_mass,
-        source,
-        y_field="m_s2sur_total",
-        source_color=SPRAY_COLORS[2],
-        target_color=SURROUNDINGS_COLOR,
-        dashed=True,
-    )
-    for i in range(num_drop_classes):
-        _plot_transfer_term(
-            p_mass,
-            source,
-            y_field=f"m_c2s_{i}",
-            source_color=PHASE_COLORS["core"],
-            target_color=SPRAY_COLORS[i],
-            line_width=1,
-            line_alpha=0.8,
-        )
-        _plot_transfer_term(
-            p_mass,
-            source,
-            y_field=f"m_s2sur_{i}",
-            source_color=SPRAY_COLORS[i],
-            target_color=SURROUNDINGS_COLOR,
-            line_width=1,
-            line_alpha=0.8,
-        )
-    _add_transfer_encoding_note(p_mass)
-    _configure_linear_grid_density([p_mass])
-    _add_hover_tool(
-        p_mass,
-        [
-            ("s", "@s{0.000}"),
-            ("m_sur2f", "@m_sur2f{0.0000}"),
-            ("m_a2sur", "@m_a2sur{0.0000}"),
-            ("m_c2s_total", "@m_c2s_total{0.0000}"),
-            ("m_s2sur_total", "@m_s2sur_total{0.0000}"),
-        ],
-        renderer=mass_renderer,
-    )
-
-    p_mom_stream = figure(
-        title="Momentum transfer terms (streamwise)",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Momentum transfer / N/m",
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    mom_stream_renderer = _plot_transfer_term(
-        p_mom_stream,
-        source,
-        y_field="f_a2sur",
-        source_color=PHASE_COLORS["air"],
-        target_color=SURROUNDINGS_COLOR,
-    )
-    _plot_transfer_term(
-        p_mom_stream,
-        source,
-        y_field="f_c2a",
-        source_color=PHASE_COLORS["core"],
-        target_color=PHASE_COLORS["air"],
-    )
-    _plot_transfer_term(
-        p_mom_stream,
-        source,
-        y_field="f_s2a_total",
-        source_color=SPRAY_COLORS[2],
-        target_color=PHASE_COLORS["air"],
-        dashed=True,
-    )
-    _plot_transfer_term(
-        p_mom_stream,
-        source,
-        y_field="f_s2sur_total",
-        source_color=SPRAY_COLORS[3],
-        target_color=SURROUNDINGS_COLOR,
-        dashed=True,
-    )
-    _plot_transfer_term(
-        p_mom_stream,
-        source,
-        y_field="f_c2s_total",
-        source_color=PHASE_COLORS["core"],
-        target_color=SPRAY_COLORS[2],
-        dashed=True,
-    )
-    for i in range(num_drop_classes):
-        _plot_transfer_term(
-            p_mom_stream,
-            source,
-            y_field=f"f_c2s_{i}",
-            source_color=PHASE_COLORS["core"],
-            target_color=SPRAY_COLORS[i],
-            line_width=1,
-            line_alpha=0.8,
-        )
-        _plot_transfer_term(
-            p_mom_stream,
-            source,
-            y_field=f"f_s2a_{i}",
-            source_color=SPRAY_COLORS[i],
-            target_color=PHASE_COLORS["air"],
-            line_width=1,
-            line_alpha=0.8,
-        )
-        _plot_transfer_term(
-            p_mom_stream,
-            source,
-            y_field=f"f_s2sur_{i}",
-            source_color=SPRAY_COLORS[i],
-            target_color=SURROUNDINGS_COLOR,
-            line_width=1,
-            line_alpha=0.8,
-        )
-    _add_transfer_encoding_note(p_mom_stream)
-    _configure_linear_grid_density([p_mom_stream])
-    _add_hover_tool(
-        p_mom_stream,
-        [
-            ("s", "@s{0.000}"),
-            ("f_a2sur", "@f_a2sur{0.0000}"),
-            ("f_c2a", "@f_c2a{0.0000}"),
-            ("f_s2a_total", "@f_s2a_total{0.0000}"),
-            ("f_s2sur_total", "@f_s2sur_total{0.0000}"),
-            ("f_c2s_total", "@f_c2s_total{0.0000}"),
-        ],
-        renderer=mom_stream_renderer,
-    )
-
-    p_mom_radial = figure(
-        title="Momentum transfer terms (radial)",
-        x_axis_label=x_axis_label,
-        x_range=x_range,
-        y_axis_label="Momentum transfer / N/m",
-        sizing_mode="stretch_width",
-        tools=DEFAULT_TOOLS,
-    )
-    mom_rad_renderer = _plot_transfer_term(
-        p_mom_radial,
-        source,
-        y_field="f_ra2sur",
-        source_color=PHASE_COLORS["air"],
-        target_color=SURROUNDINGS_COLOR,
-    )
-    _plot_transfer_term(
-        p_mom_radial,
-        source,
-        y_field="f_rc2a",
-        source_color=PHASE_COLORS["core"],
-        target_color=PHASE_COLORS["air"],
-    )
-    _plot_transfer_term(
-        p_mom_radial,
-        source,
-        y_field="f_rs2a_total",
-        source_color=SPRAY_COLORS[2],
-        target_color=PHASE_COLORS["air"],
-        dashed=True,
-    )
-    _plot_transfer_term(
-        p_mom_radial,
-        source,
-        y_field="f_rs2sur_total",
-        source_color=SPRAY_COLORS[3],
-        target_color=SURROUNDINGS_COLOR,
-        dashed=True,
-    )
-    _plot_transfer_term(
-        p_mom_radial,
-        source,
-        y_field="f_rc2s_total",
-        source_color=PHASE_COLORS["core"],
-        target_color=SPRAY_COLORS[2],
-        dashed=True,
-    )
-    for i in range(num_drop_classes):
-        _plot_transfer_term(
-            p_mom_radial,
-            source,
-            y_field=f"f_rc2s_{i}",
-            source_color=PHASE_COLORS["core"],
-            target_color=SPRAY_COLORS[i],
-            line_width=1,
-            line_alpha=0.8,
-        )
-        _plot_transfer_term(
-            p_mom_radial,
-            source,
-            y_field=f"f_rs2a_{i}",
-            source_color=SPRAY_COLORS[i],
-            target_color=PHASE_COLORS["air"],
-            line_width=1,
-            line_alpha=0.8,
-        )
-        _plot_transfer_term(
-            p_mom_radial,
-            source,
-            y_field=f"f_rs2sur_{i}",
-            source_color=SPRAY_COLORS[i],
-            target_color=SURROUNDINGS_COLOR,
-            line_width=1,
-            line_alpha=0.8,
-        )
-    _add_transfer_encoding_note(p_mom_radial)
-    _configure_linear_grid_density([p_mom_radial])
-    _add_hover_tool(
-        p_mom_radial,
-        [
-            ("s", "@s{0.000}"),
-            ("f_ra2sur", "@f_ra2sur{0.0000}"),
-            ("f_rc2a", "@f_rc2a{0.0000}"),
-            ("f_rs2a_total", "@f_rs2a_total{0.0000}"),
-            ("f_rs2sur_total", "@f_rs2sur_total{0.0000}"),
-            ("f_rc2s_total", "@f_rc2s_total{0.0000}"),
-        ],
-        renderer=mom_rad_renderer,
-    )
-
-    plot_layout = column(
-        p_traj,
-        row(p_speeds, p_diameters, sizing_mode="stretch_width"),
-        row(p_angles, p_nd, sizing_mode="stretch_width"),
-        p_rho,
-        row(p_mom_stream, p_mom_radial, sizing_mode="stretch_width"),
-        p_mass,
-        sizing_mode="stretch_width",
-    )
-
-    save(plot_layout)
-    logger.info("Plot saved.")
     return
 
 
@@ -874,13 +801,11 @@ def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
     y_vals = np.asarray(source.data["y"], dtype=float)
     d_vals = np.asarray(source.data["Df"], dtype=float)
     theta_deg = np.asarray(source.data["theta_f_deg"], dtype=float)
-
     if x_vals.size == 0:
         return
 
     upper = np.array([x_vals, y_vals], dtype=float).T
     lower = np.copy(upper)
-
     valid = (
         np.isfinite(x_vals)
         & np.isfinite(y_vals)
@@ -895,28 +820,61 @@ def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
         upper[i, :] += np.dot(rot, np.array([0.0, r]))
         lower[i, :] += np.dot(rot, np.array([0.0, -r]))
 
-    x_patch = np.concatenate([upper[:, 0], lower[::-1, 0]])
-    y_patch = np.concatenate([upper[:, 1], lower[::-1, 1]])
     p_traj.patch(
-        x_patch,
-        y_patch,
+        np.concatenate([upper[:, 0], lower[::-1, 0]]),
+        np.concatenate([upper[:, 1], lower[::-1, 1]]),
         fill_alpha=0.3,
         fill_color="skyblue",
         line_color="gray",
         line_width=1,
         legend_label="Stream Width",
     )
-    logger.debug(f"Added stream width patch with {x_patch.shape[0]} elements")
     return
 
 
-def _sum_trace_columns(trace_col_getter, prefix: str, n_rows: int) -> np.ndarray:
+def _finite_max(source: ColumnDataSource, *fields: str) -> float:
+    """Compute maximum finite value across one or more datasource fields."""
+
+    max_value = 0.0
+    for field in fields:
+        vals = np.asarray(source.data[field], dtype=float)
+        finite = vals[np.isfinite(vals)]
+        if finite.size > 0:
+            max_value = max(max_value, float(np.max(finite)))
+    return max_value
+
+
+def _log_range_from_fields(
+    source: ColumnDataSource, fields: Sequence[str]
+) -> Tuple[float, float]:
+    """Compute robust positive log-range bounds from multiple fields."""
+
+    min_positive = np.inf
+    max_value = 0.0
+    for field in fields:
+        vals = np.asarray(source.data[field], dtype=float)
+        finite_positive = vals[np.isfinite(vals) & (vals > 0.0)]
+        if finite_positive.size > 0:
+            min_positive = min(min_positive, float(np.min(finite_positive)))
+            max_value = max(max_value, float(np.max(finite_positive)))
+    if not np.isfinite(min_positive):
+        min_positive = 1e-3
+    if max_value <= 0.0:
+        max_value = 1.0
+    start = max(1e-6, min_positive * 0.5)
+    end = max(start * 10.0, max_value * 1.2)
+    return start, end
+
+
+def _sum_trace_columns(
+    trace_col_getter: Callable[[str], np.ndarray], prefix: str, n_rows: int
+) -> np.ndarray:
     """Sum traced vector columns sharing the same prefix.
 
     Args:
-        trace_col_getter: Callable that fetches one trace column by name.
+        trace_col_getter: Function fetching one trace column by name.
         prefix: Column prefix, e.g. "m_c2s" for columns "m_c2s[i]".
-        n_rows: Row count used for initializing empty totals.
+        n_rows: Row count used for initialization.
 
     Returns:
         Element-wise sum across all class-specific columns for the prefix.
@@ -947,12 +905,12 @@ def _configure_linear_grid_density(figures: Iterable) -> None:
 def _add_hover_tool(
     fig, tooltips: list[tuple[str, str]], renderer: GlyphRenderer | None = None
 ) -> None:
-    """Attach a hover tool with the provided tooltip rows.
+    """Attach one hover tool with optional renderer filtering.
 
     Args:
         fig: Bokeh figure to augment.
         tooltips: Label/value tooltip tuples shown on hover.
-        renderer: Optional glyph renderer used as the single hover target.
+        renderer: Optional single renderer to avoid duplicate tooltips.
     """
 
     hover = HoverTool(tooltips=tooltips, mode="vline")
