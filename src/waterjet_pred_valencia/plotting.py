@@ -25,6 +25,7 @@ PHASE_COLORS: Dict[str, str] = {
     "stream": Colorblind5[3],
 }
 SPRAY_COLORS: Tuple[str, ...] = tuple(Blues8[i] for i in range(num_drop_classes))
+SURROUNDINGS_COLOR = "#4a4a4a"
 
 DEFAULT_TOOLS = "pan,wheel_zoom,box_zoom,reset,save"
 DESIRED_MAJOR_TICKS = 10
@@ -73,6 +74,9 @@ def _build_source_from_solution(
     # Last s value to plot (termination event or predefined simulation span).
     s_end: float = float(sol.t_events[0][0] if len(sol.t_events[0]) > 0 else sol.t[-1])
 
+    n_rows = sol.t.size
+    nan_series = np.full((n_rows,), np.nan, dtype=float)
+
     data: Dict[str, np.ndarray] = {
         "s": sol.t,
         "Uc": sol.y[JetState.get_idx("Uc"), :],
@@ -92,7 +96,31 @@ def _build_source_from_solution(
             f"theta_s_deg_{i}": np.rad2deg(np.pi / 2 - sol.y[state_idx[f"theta_s_{i}"]])
             for i in range(num_drop_classes)
         },
+        "m_sur2f": nan_series.copy(),
+        "m_a2sur": nan_series.copy(),
+        "f_a2sur": nan_series.copy(),
+        "f_ra2sur": nan_series.copy(),
+        "f_c2a": nan_series.copy(),
+        "f_rc2a": nan_series.copy(),
+        "f_s2a_total": nan_series.copy(),
+        "f_rs2a_total": nan_series.copy(),
+        "f_s2sur_total": nan_series.copy(),
+        "f_rs2sur_total": nan_series.copy(),
+        "m_c2s_total": nan_series.copy(),
+        "m_s2sur_total": nan_series.copy(),
+        "f_c2s_total": nan_series.copy(),
+        "f_rc2s_total": nan_series.copy(),
     }
+
+    for i in range(num_drop_classes):
+        data[f"m_c2s_{i}"] = nan_series.copy()
+        data[f"m_s2sur_{i}"] = nan_series.copy()
+        data[f"f_c2s_{i}"] = nan_series.copy()
+        data[f"f_rc2s_{i}"] = nan_series.copy()
+        data[f"f_s2a_{i}"] = nan_series.copy()
+        data[f"f_rs2a_{i}"] = nan_series.copy()
+        data[f"f_s2sur_{i}"] = nan_series.copy()
+        data[f"f_rs2sur_{i}"] = nan_series.copy()
 
     source = ColumnDataSource(data=data)
     return source, s_end
@@ -141,7 +169,31 @@ def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, flo
             f"theta_s_deg_{i}": 90.0 - _trace_col(f"theta_s_deg[{i}]")
             for i in range(num_drop_classes)
         },
+        "m_sur2f": _trace_col("m_sur2f"),
+        "m_a2sur": _trace_col("m_a2sur"),
+        "f_a2sur": _trace_col("f_a2sur"),
+        "f_ra2sur": _trace_col("f_ra2sur"),
+        "f_c2a": _trace_col("f_c2a"),
+        "f_rc2a": _trace_col("f_rc2a"),
+        "f_s2a_total": _trace_col("f_s2a_total"),
+        "f_rs2a_total": _trace_col("f_rs2a_total"),
+        "f_s2sur_total": _trace_col("f_s2sur_total"),
+        "f_rs2sur_total": _trace_col("f_rs2sur_total"),
+        "m_c2s_total": _sum_trace_columns(_trace_col, "m_c2s", n_rows),
+        "m_s2sur_total": _sum_trace_columns(_trace_col, "m_s2sur", n_rows),
+        "f_c2s_total": _sum_trace_columns(_trace_col, "f_c2s", n_rows),
+        "f_rc2s_total": _sum_trace_columns(_trace_col, "f_rc2s", n_rows),
     }
+
+    for i in range(num_drop_classes):
+        data[f"m_c2s_{i}"] = _trace_col(f"m_c2s[{i}]")
+        data[f"m_s2sur_{i}"] = _trace_col(f"m_s2sur[{i}]")
+        data[f"f_c2s_{i}"] = _trace_col(f"f_c2s[{i}]")
+        data[f"f_rc2s_{i}"] = _trace_col(f"f_rc2s[{i}]")
+        data[f"f_s2a_{i}"] = _trace_col(f"f_s2a[{i}]")
+        data[f"f_rs2a_{i}"] = _trace_col(f"f_rs2a[{i}]")
+        data[f"f_s2sur_{i}"] = _trace_col(f"f_s2sur[{i}]")
+        data[f"f_rs2sur_{i}"] = _trace_col(f"f_rs2sur[{i}]")
 
     source = ColumnDataSource(data=data)
 
@@ -458,11 +510,272 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         renderer=rho_renderer,
     )
 
+    p_mass = figure(
+        title="Mass transfer terms",
+        x_axis_label=x_axis_label,
+        x_range=x_range,
+        y_axis_label="Mass transfer / kg/(m*s)",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
+    )
+    mass_renderer = p_mass.line(
+        "s",
+        "m_sur2f",
+        source=source,
+        line_width=2,
+        line_color=SURROUNDINGS_COLOR,
+        legend_label="m_sur2f",
+    )
+    p_mass.line(
+        "s",
+        "m_a2sur",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["air"],
+        legend_label="m_a2sur",
+    )
+    p_mass.line(
+        "s",
+        "m_c2s_total",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["core"],
+        legend_label="m_c2s_total",
+    )
+    p_mass.line(
+        "s",
+        "m_s2sur_total",
+        source=source,
+        line_width=2,
+        line_color=SPRAY_COLORS[2],
+        legend_label="m_s2sur_total",
+    )
+    for i in range(num_drop_classes):
+        p_mass.line(
+            "s",
+            f"m_c2s_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=PHASE_COLORS["core"],
+            legend_label=f"m_c2s[{i}]",
+        )
+        p_mass.line(
+            "s",
+            f"m_s2sur_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=SPRAY_COLORS[i],
+            legend_label=f"m_s2sur[{i}]",
+        )
+    p_mass.legend.location = "top_left"
+    _configure_linear_grid_density([p_mass])
+    _add_hover_tool(
+        p_mass,
+        [
+            ("s", "@s{0.000}"),
+            ("m_sur2f", "@m_sur2f{0.0000}"),
+            ("m_a2sur", "@m_a2sur{0.0000}"),
+            ("m_c2s_total", "@m_c2s_total{0.0000}"),
+            ("m_s2sur_total", "@m_s2sur_total{0.0000}"),
+        ],
+        renderer=mass_renderer,
+    )
+
+    p_mom_stream = figure(
+        title="Momentum transfer terms (streamwise)",
+        x_axis_label=x_axis_label,
+        x_range=x_range,
+        y_axis_label="Momentum transfer / N/m",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
+    )
+    mom_stream_renderer = p_mom_stream.line(
+        "s",
+        "f_a2sur",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["air"],
+        legend_label="f_a2sur",
+    )
+    p_mom_stream.line(
+        "s",
+        "f_c2a",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["core"],
+        legend_label="f_c2a",
+    )
+    p_mom_stream.line(
+        "s",
+        "f_s2a_total",
+        source=source,
+        line_width=2,
+        line_color=SPRAY_COLORS[2],
+        legend_label="f_s2a_total",
+    )
+    p_mom_stream.line(
+        "s",
+        "f_s2sur_total",
+        source=source,
+        line_width=2,
+        line_color=SPRAY_COLORS[3],
+        legend_label="f_s2sur_total",
+    )
+    p_mom_stream.line(
+        "s",
+        "f_c2s_total",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["core"],
+        line_dash="dashed",
+        legend_label="f_c2s_total",
+    )
+    for i in range(num_drop_classes):
+        p_mom_stream.line(
+            "s",
+            f"f_c2s_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=PHASE_COLORS["core"],
+            legend_label=f"f_c2s[{i}]",
+        )
+        p_mom_stream.line(
+            "s",
+            f"f_s2a_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=SPRAY_COLORS[i],
+            legend_label=f"f_s2a[{i}]",
+        )
+        p_mom_stream.line(
+            "s",
+            f"f_s2sur_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=SPRAY_COLORS[i],
+            line_dash="dotted",
+            legend_label=f"f_s2sur[{i}]",
+        )
+    p_mom_stream.legend.location = "top_left"
+    _configure_linear_grid_density([p_mom_stream])
+    _add_hover_tool(
+        p_mom_stream,
+        [
+            ("s", "@s{0.000}"),
+            ("f_a2sur", "@f_a2sur{0.0000}"),
+            ("f_c2a", "@f_c2a{0.0000}"),
+            ("f_s2a_total", "@f_s2a_total{0.0000}"),
+            ("f_s2sur_total", "@f_s2sur_total{0.0000}"),
+            ("f_c2s_total", "@f_c2s_total{0.0000}"),
+        ],
+        renderer=mom_stream_renderer,
+    )
+
+    p_mom_radial = figure(
+        title="Momentum transfer terms (radial)",
+        x_axis_label=x_axis_label,
+        x_range=x_range,
+        y_axis_label="Momentum transfer / N/m",
+        sizing_mode="stretch_width",
+        tools=DEFAULT_TOOLS,
+    )
+    mom_rad_renderer = p_mom_radial.line(
+        "s",
+        "f_ra2sur",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["air"],
+        legend_label="f_ra2sur",
+    )
+    p_mom_radial.line(
+        "s",
+        "f_rc2a",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["core"],
+        legend_label="f_rc2a",
+    )
+    p_mom_radial.line(
+        "s",
+        "f_rs2a_total",
+        source=source,
+        line_width=2,
+        line_color=SPRAY_COLORS[2],
+        legend_label="f_rs2a_total",
+    )
+    p_mom_radial.line(
+        "s",
+        "f_rs2sur_total",
+        source=source,
+        line_width=2,
+        line_color=SPRAY_COLORS[3],
+        legend_label="f_rs2sur_total",
+    )
+    p_mom_radial.line(
+        "s",
+        "f_rc2s_total",
+        source=source,
+        line_width=2,
+        line_color=PHASE_COLORS["core"],
+        line_dash="dashed",
+        legend_label="f_rc2s_total",
+    )
+    for i in range(num_drop_classes):
+        p_mom_radial.line(
+            "s",
+            f"f_rc2s_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=PHASE_COLORS["core"],
+            legend_label=f"f_rc2s[{i}]",
+        )
+        p_mom_radial.line(
+            "s",
+            f"f_rs2a_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=SPRAY_COLORS[i],
+            legend_label=f"f_rs2a[{i}]",
+        )
+        p_mom_radial.line(
+            "s",
+            f"f_rs2sur_{i}",
+            source=source,
+            line_width=1,
+            line_alpha=0.8,
+            line_color=SPRAY_COLORS[i],
+            line_dash="dotted",
+            legend_label=f"f_rs2sur[{i}]",
+        )
+    p_mom_radial.legend.location = "top_left"
+    _configure_linear_grid_density([p_mom_radial])
+    _add_hover_tool(
+        p_mom_radial,
+        [
+            ("s", "@s{0.000}"),
+            ("f_ra2sur", "@f_ra2sur{0.0000}"),
+            ("f_rc2a", "@f_rc2a{0.0000}"),
+            ("f_rs2a_total", "@f_rs2a_total{0.0000}"),
+            ("f_rs2sur_total", "@f_rs2sur_total{0.0000}"),
+            ("f_rc2s_total", "@f_rc2s_total{0.0000}"),
+        ],
+        renderer=mom_rad_renderer,
+    )
+
     plot_layout = column(
         p_traj,
         row(p_speeds, p_diameters, sizing_mode="stretch_width"),
         row(p_angles, p_nd, sizing_mode="stretch_width"),
         p_rho,
+        row(p_mom_stream, p_mom_radial, sizing_mode="stretch_width"),
+        p_mass,
         sizing_mode="stretch_width",
     )
 
@@ -517,6 +830,24 @@ def _add_stream_width_patch(p_traj, source: ColumnDataSource) -> None:
     )
     logger.debug(f"Added stream width patch with {x_patch.shape[0]} elements")
     return
+
+
+def _sum_trace_columns(trace_col_getter, prefix: str, n_rows: int) -> np.ndarray:
+    """Sum traced vector columns sharing the same prefix.
+
+    Args:
+        trace_col_getter: Callable that fetches one trace column by name.
+        prefix: Column prefix, e.g. "m_c2s" for columns "m_c2s[i]".
+        n_rows: Row count used for initializing empty totals.
+
+    Returns:
+        Element-wise sum across all class-specific columns for the prefix.
+    """
+
+    total = np.zeros((n_rows,), dtype=float)
+    for i in range(num_drop_classes):
+        total += trace_col_getter(f"{prefix}[{i}]")
+    return total
 
 
 def _configure_linear_grid_density(figures: Iterable) -> None:
