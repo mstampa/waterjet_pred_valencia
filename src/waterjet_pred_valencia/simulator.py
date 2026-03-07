@@ -212,24 +212,24 @@ def ode_right_hand_side(
     dyds = JetState()
 
     # Define helper vars.
-    pi_2 = DTYPE(np.pi / 2.0)
-    pi_4 = DTYPE(np.pi / 4.0)
-    TOL = DTYPE(1e-6)
+    pi_2 = np.pi / 2.0
+    pi_4 = np.pi / 4.0
+    TOL = 1e-6
 
     # "The local direction of the core is assumed to be equal to the fire stream"
-    theta_c: DTYPE = yc.theta_f
+    theta_c = yc.theta_f
 
     # --- PRECOMPUTE SINES, COSINES, VECTORS, ... --- #
 
     # sin and cos of stream, core, and air phase angles.
-    # FIX: 1e-9 added in Andres' version from 25.09.25. Check why.
+    # NOTE: 1e-9 added in Andres' version from 25.09.25.
     sin_f, cos_f = np.sin(yc.theta_f) + 1e-9, np.cos(yc.theta_f)
     sin_c, cos_c = np.sin(theta_c) + 1e-9, np.cos(theta_c)
     sin_a, cos_a = np.sin(yc.theta_a) + 1e-9, np.cos(yc.theta_a)
 
     # Safe denominators for ODEs to prevent division by ~0.
-    den_f: DTYPE = sin_f
-    den_a: DTYPE = sin_a
+    den_f = sin_f
+    den_a = sin_a
     if abs(den_f) < TOL:
         logger.warning(f"sin(theta_f)≈0 at {s=:.3f}; applying floor={TOL:g}")
         den_f = np.sign(sin_f) * max(abs(sin_f), TOL)
@@ -242,7 +242,7 @@ def ode_right_hand_side(
     e_a: NDArray[DTYPE] = np.array([sin_a, cos_a], dtype=DTYPE)  # air streamwise
 
     n_c: NDArray[DTYPE] = rotate90_cw(e_c)  # core radial (90° clockwise)
-    core_dotprod: DTYPE = np.dot(e_c, n_c)
+    core_dotprod = np.dot(e_c, n_c)
     assert np.isclose(core_dotprod, 0.0, atol=1e-6), (
         f"Core vectors {e_c=}, {n_c=} must be orthogonal but {core_dotprod=} != 0"
     )
@@ -281,9 +281,9 @@ def ode_right_hand_side(
     epsilon: float = 0.012 * (s / (Delta * np.sqrt(params.weber)))
 
     # Mass and momentum transfer terms for each spray class.
-    sin_s, cos_s, den_s = (np.zeros(num_drop_classes) for _ in range(3))
+    sin_s, cos_s, den_s = (np.zeros(num_drop_classes, dtype=DTYPE) for _ in range(3))
     m_c2s, m_s2sur, f_c2s, f_rc2s, f_s2a, f_rs2a, f_s2sur, f_rs2sur, u_rc2s = (
-        np.zeros(num_drop_classes) for _ in range(9)
+        np.zeros(num_drop_classes, dtype=DTYPE) for _ in range(9)
     )
     for i in range(num_drop_classes):
         sin_s[i], cos_s[i] = np.sin(yc.theta_s[i]), np.cos(yc.theta_s[i])
@@ -297,9 +297,9 @@ def ode_right_hand_side(
             den_s[i] = np.sign(sin_s[i]) * max(abs(sin_s[i]), TOL)
 
         # Construct stream phase unit vectors.
-        e_s: NDArray = np.array([sin_s[i], cos_s[i]])  # streamwise
+        e_s: NDArray[DTYPE] = np.array([sin_s[i], cos_s[i]], dtype=DTYPE)  # streamwise
         n_s: NDArray = rotate90_cw(e_s)  # radial
-        spray_dotprod: DTYPE = np.dot(e_s, n_s)
+        spray_dotprod = np.dot(e_s, n_s)
         assert np.isclose(spray_dotprod, 0.0, atol=1e-6), (
             f"Spray vectors {e_s=}, {n_s=} must be orthogonal but {spray_dotprod=} != 0"
         )
@@ -392,8 +392,8 @@ def ode_right_hand_side(
 
     # The core phase only exists until s_brk.
     if params._is_post_breakup:
-        dyds.Uc = DTYPE(0.0)
-        dyds.Dc = DTYPE(0.0)
+        dyds.Uc = 0.0
+        dyds.Dc = 0.0
     elif s < params.s_brk:
         # Eq 1, 2 core phass mass and momentum conservation.
         dyds.Uc = -(np.pi * yc.Dc**2 * g * rho_w * cos_c + 4 * f_c2a) / (
@@ -562,12 +562,6 @@ def ode_right_hand_side(
             "f_rs2a_total": f_rs2a_total,
             "f_s2sur_total": f_s2sur_total,
             "f_rs2sur_total": f_rs2sur_total,
-            # "dyds_Uf": float(dyds.Uf),
-            # "dyds_theta_f": float(dyds.theta_f),
-            # "dyds_Ua": float(dyds.Ua),
-            # "dyds_theta_a": float(dyds.theta_a),
-            # "dyds_Df": float(dyds.Df),
-            # "dyds_Da": float(dyds.Da),
         }
         vectors = {
             "theta_s_deg": np.rad2deg(yc.theta_s),
@@ -614,7 +608,7 @@ def print_debug_state(s: float, state: JetState, params: SimParams) -> None:
         state: the JetState at s.
         params: the simulation parameters.
     """
-    theta_c: DTYPE = state.theta_f
+    theta_c = state.theta_f
 
     th_c_deg, th_a_deg, th_f_deg = np.rad2deg([theta_c, state.theta_a, state.theta_f])
     debug_str = ("post" if params._is_post_breakup else "pre") + " break-up"

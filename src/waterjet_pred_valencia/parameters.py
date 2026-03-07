@@ -11,10 +11,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 # Default numpy datatype.
-DTYPE = np.float32
+# NOTE: scipy.solve_ivp() uses double precision internally, so changing this value to
+# anything else won't affect performance. The type definition is kept here anyway
+# in case we switch to another ODE stack at some point (e.g., Diffrax) that does
+# support varying precision levels.
+DTYPE = np.float64
 
 
-@dataclass
+@dataclass(slots=True)
 class SimParams:
     """Dataclass to hold per-simulation parameters (given or computed once).
 
@@ -22,10 +26,16 @@ class SimParams:
         injection_speed (U_0): Speed of the water as it exits the nozzle [m/s].
         injection_angle_deg (theta_0): Elevation angle of the nozzle [deg].
         nozzle_diameter (D_0): Nozzle diameter [m].
+        s_brk: Core breakup point along s [m].
+        weber (We_0): Weber number [-].
     """
 
-    # Flag indicating if simulation is past s_brk
-    _is_post_breakup: bool = False
+    injection_speed: float
+    injection_angle_deg: float
+    nozzle_diameter: float
+    s_brk: float
+    weber: float
+    _is_post_breakup: bool
 
     def __init__(
         self, injection_speed: float, injection_angle_deg: float, nozzle_diameter: float
@@ -38,8 +48,9 @@ class SimParams:
         self.injection_speed = injection_speed
         self.injection_angle_deg = injection_angle_deg
         self.nozzle_diameter = nozzle_diameter
-        self.s_brk = get_breakup_distance(self.nozzle_diameter)
-        self.weber = get_weber_number(self.injection_speed, self.nozzle_diameter)
+        self.s_brk = get_breakup_distance(nozzle_diameter)
+        self.weber = get_weber_number(injection_speed, nozzle_diameter)
+        self._is_post_breakup = False
         return
 
 

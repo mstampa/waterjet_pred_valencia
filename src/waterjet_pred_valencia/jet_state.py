@@ -52,17 +52,17 @@ class JetState:
     ]
     SPRAY_VARS: ClassVar[List[str]] = ["ND", "Us", "theta_s"]
 
-    Uc: DTYPE = DTYPE(0.0)
-    Dc: DTYPE = DTYPE(0.0)
-    Ua: DTYPE = DTYPE(0.0)
-    Da: DTYPE = DTYPE(0.0)
-    theta_a: DTYPE = DTYPE(0.0)
-    Uf: DTYPE = DTYPE(0.0)
-    Df: DTYPE = DTYPE(0.0)
-    theta_f: DTYPE = DTYPE(0.0)
-    rho_f: DTYPE = DTYPE(0.0)
-    x: DTYPE = DTYPE(0.0)
-    y: DTYPE = DTYPE(0.0)
+    Uc: float = 0.0
+    Dc: float = 0.0
+    Ua: float = 0.0
+    Da: float = 0.0
+    theta_a: float = 0.0
+    Uf: float = 0.0
+    Df: float = 0.0
+    theta_f: float = 0.0
+    rho_f: float = 0.0
+    x: float = 0.0
+    y: float = 0.0
     ND: NDArray[DTYPE] = field(
         default_factory=lambda: np.zeros(num_drop_classes, dtype=DTYPE)
     )
@@ -111,6 +111,7 @@ class JetState:
             JetState object.
         """
 
+        y = np.asarray(y, dtype=DTYPE)
         assert np.all(np.isfinite(y))
         base: int = 11
         return JetState(
@@ -183,7 +184,7 @@ class JetState:
 
         # NOTE: Author confirmed that only the injection angle is measured relative to
         # horizon. Phase angles are measured relative to vertical axis.
-        injection_angle_rad: DTYPE = np.deg2rad(injection_angle_deg, dtype=DTYPE)
+        injection_angle_rad = np.deg2rad(injection_angle_deg)
         logger.debug("")
         logger.debug(f"\t{injection_angle_rad = }")
 
@@ -191,37 +192,37 @@ class JetState:
         # injection_angle_rad: float = np.pi / 2.0 - injection_angle_rad
 
         # Position
-        init.x = DTYPE(0.0)
-        init.y = DTYPE(injection_height)
+        init.x = 0.0
+        init.y = injection_height
 
         # Eq 31-33 core phase
-        init.Uc = DTYPE(injection_speed)
-        init.Dc = DTYPE(nozzle_diameter)
+        init.Uc = injection_speed
+        init.Dc = nozzle_diameter
 
         # Eq 34-36 spray phase (one set per droplet class)
         for i in range(num_drop_classes):
             # NOTE: Not 0.0 to prevent singularities, e.g. in dyds[theta_s] calculation.
             # Since ND will grow rapidly, a small starting value doesn't hurt.
-            init.ND[i] = DTYPE(1.0)
+            init.ND[i] = 1.0
 
-            init.Us[i] = DTYPE(injection_speed)
-            init.theta_s[i] = DTYPE(injection_angle_rad)
+            init.Us[i] = injection_speed
+            init.theta_s[i] = injection_angle_rad
             logger.debug(f"\ttheta_s[{i}]={np.rad2deg(init.theta_s[i])}°")
 
         # Eq 38-40 air phase
         # NOTE: -1e-6 from notebook, not paper.
-        init.Ua = DTYPE(injection_speed - 1e-6)
+        init.Ua = injection_speed - 1e-6
         # NOTE: not 0.0 as in paper to prevent singularity in dyds.Ua calculation
-        init.Da = DTYPE(nozzle_diameter)
-        init.theta_a = DTYPE(injection_angle_rad)
+        init.Da = nozzle_diameter
+        init.theta_a = injection_angle_rad
         logger.debug(f"\ttheta_f={np.rad2deg(init.theta_a)}°")
 
         # Eq 41-44 fire stream phase
-        init.Uf = DTYPE(injection_speed)
-        init.Df = DTYPE(nozzle_diameter)
-        init.theta_f = DTYPE(injection_angle_rad)
+        init.Uf = injection_speed
+        init.Df = nozzle_diameter
+        init.theta_f = injection_angle_rad
         logger.debug(f"\ttheta_f={np.rad2deg(init.theta_f)}°")
-        init.rho_f = DTYPE(rho_w)
+        init.rho_f = rho_w
 
         return init
 
