@@ -6,7 +6,7 @@ from typing import Dict, Iterable, Tuple
 
 import numpy as np
 from bokeh.layouts import column, row
-from bokeh.models import AdaptiveTicker, ColumnDataSource, HoverTool, Range1d
+from bokeh.models import AdaptiveTicker, ColumnDataSource, HoverTool, Label, Range1d
 from bokeh.models.renderers import GlyphRenderer
 from bokeh.palettes import Blues8, Colorblind5
 from bokeh.plotting import figure, output_file, save
@@ -205,6 +205,94 @@ def _build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, flo
 
     s_end = float(np.max(finite_s))
     return source, s_end
+
+
+def _plot_transfer_term(
+    fig,
+    source: ColumnDataSource,
+    y_field: str,
+    source_color: str,
+    target_color: str | None,
+    dashed: bool = False,
+    line_width: int = 2,
+    line_alpha: float = 1.0,
+    marker_step: int = 16,
+) -> GlyphRenderer:
+    """Plot a transfer-term line with optional target markers.
+
+    Args:
+        fig: Bokeh figure to plot on.
+        source: Main datasource containing s and transfer-term columns.
+        y_field: Column name of the plotted transfer-term.
+        source_color: Color encoding the source phase.
+        target_color: Color encoding the target phase. If None, no markers are added.
+        dashed: Whether to draw the line as dashed (used for totals).
+        line_width: Width of the line glyph.
+        line_alpha: Alpha of the line glyph.
+        marker_step: Point spacing for marker decimation.
+
+    Returns:
+        Renderer of the line glyph.
+    """
+
+    line_dash = "dashed" if dashed else "solid"
+    renderer = fig.line(
+        "s",
+        y_field,
+        source=source,
+        line_width=line_width,
+        line_alpha=line_alpha,
+        line_color=source_color,
+        line_dash=line_dash,
+    )
+
+    if target_color is None:
+        return renderer
+
+    x_vals = np.asarray(source.data["s"], dtype=float)
+    y_vals = np.asarray(source.data[y_field], dtype=float)
+    valid = np.isfinite(x_vals) & np.isfinite(y_vals)
+    idx = np.where(valid)[0]
+    if idx.size == 0:
+        return renderer
+
+    marker_idx = idx[:: max(1, marker_step)]
+    marker_source = ColumnDataSource(
+        data={"s": x_vals[marker_idx], y_field: y_vals[marker_idx]}
+    )
+    fig.scatter(
+        "s",
+        y_field,
+        source=marker_source,
+        marker="circle",
+        size=7,
+        fill_color=target_color,
+        line_color=target_color,
+        fill_alpha=0.9,
+        line_alpha=0.9,
+    )
+    return renderer
+
+
+def _add_transfer_encoding_note(fig) -> None:
+    """Add a compact note explaining source/target encoding for transfer plots.
+
+    Args:
+        fig: Bokeh figure to annotate.
+    """
+    note = Label(
+        x=8,
+        y=8,
+        x_units="screen",
+        y_units="screen",
+        text="line=source, marker=target, dashed=total, grey=surroundings",
+        text_font_size="9pt",
+        text_color="#303030",
+        background_fill_color="#ffffff",
+        background_fill_alpha=0.8,
+    )
+    fig.add_layout(note)
+    return
 
 
 def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
@@ -518,58 +606,56 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    mass_renderer = p_mass.line(
-        "s",
-        "m_sur2f",
-        source=source,
-        line_width=2,
-        line_color=SURROUNDINGS_COLOR,
-        legend_label="m_sur2f",
+    mass_renderer = _plot_transfer_term(
+        p_mass,
+        source,
+        y_field="m_sur2f",
+        source_color=SURROUNDINGS_COLOR,
+        target_color=PHASE_COLORS["stream"],
     )
-    p_mass.line(
-        "s",
-        "m_a2sur",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="m_a2sur",
+    _plot_transfer_term(
+        p_mass,
+        source,
+        y_field="m_a2sur",
+        source_color=PHASE_COLORS["air"],
+        target_color=SURROUNDINGS_COLOR,
     )
-    p_mass.line(
-        "s",
-        "m_c2s_total",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        legend_label="m_c2s_total",
+    _plot_transfer_term(
+        p_mass,
+        source,
+        y_field="m_c2s_total",
+        source_color=PHASE_COLORS["core"],
+        target_color=SPRAY_COLORS[2],
+        dashed=True,
     )
-    p_mass.line(
-        "s",
-        "m_s2sur_total",
-        source=source,
-        line_width=2,
-        line_color=SPRAY_COLORS[2],
-        legend_label="m_s2sur_total",
+    _plot_transfer_term(
+        p_mass,
+        source,
+        y_field="m_s2sur_total",
+        source_color=SPRAY_COLORS[2],
+        target_color=SURROUNDINGS_COLOR,
+        dashed=True,
     )
     for i in range(num_drop_classes):
-        p_mass.line(
-            "s",
-            f"m_c2s_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mass,
+            source,
+            y_field=f"m_c2s_{i}",
+            source_color=PHASE_COLORS["core"],
+            target_color=SPRAY_COLORS[i],
             line_width=1,
             line_alpha=0.8,
-            line_color=PHASE_COLORS["core"],
-            legend_label=f"m_c2s[{i}]",
         )
-        p_mass.line(
-            "s",
-            f"m_s2sur_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mass,
+            source,
+            y_field=f"m_s2sur_{i}",
+            source_color=SPRAY_COLORS[i],
+            target_color=SURROUNDINGS_COLOR,
             line_width=1,
             line_alpha=0.8,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"m_s2sur[{i}]",
         )
-    p_mass.legend.location = "top_left"
+    _add_transfer_encoding_note(p_mass)
     _configure_linear_grid_density([p_mass])
     _add_hover_tool(
         p_mass,
@@ -591,77 +677,73 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    mom_stream_renderer = p_mom_stream.line(
-        "s",
-        "f_a2sur",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="f_a2sur",
+    mom_stream_renderer = _plot_transfer_term(
+        p_mom_stream,
+        source,
+        y_field="f_a2sur",
+        source_color=PHASE_COLORS["air"],
+        target_color=SURROUNDINGS_COLOR,
     )
-    p_mom_stream.line(
-        "s",
-        "f_c2a",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        legend_label="f_c2a",
+    _plot_transfer_term(
+        p_mom_stream,
+        source,
+        y_field="f_c2a",
+        source_color=PHASE_COLORS["core"],
+        target_color=PHASE_COLORS["air"],
     )
-    p_mom_stream.line(
-        "s",
-        "f_s2a_total",
-        source=source,
-        line_width=2,
-        line_color=SPRAY_COLORS[2],
-        legend_label="f_s2a_total",
+    _plot_transfer_term(
+        p_mom_stream,
+        source,
+        y_field="f_s2a_total",
+        source_color=SPRAY_COLORS[2],
+        target_color=PHASE_COLORS["air"],
+        dashed=True,
     )
-    p_mom_stream.line(
-        "s",
-        "f_s2sur_total",
-        source=source,
-        line_width=2,
-        line_color=SPRAY_COLORS[3],
-        legend_label="f_s2sur_total",
+    _plot_transfer_term(
+        p_mom_stream,
+        source,
+        y_field="f_s2sur_total",
+        source_color=SPRAY_COLORS[3],
+        target_color=SURROUNDINGS_COLOR,
+        dashed=True,
     )
-    p_mom_stream.line(
-        "s",
-        "f_c2s_total",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        line_dash="dashed",
-        legend_label="f_c2s_total",
+    _plot_transfer_term(
+        p_mom_stream,
+        source,
+        y_field="f_c2s_total",
+        source_color=PHASE_COLORS["core"],
+        target_color=SPRAY_COLORS[2],
+        dashed=True,
     )
     for i in range(num_drop_classes):
-        p_mom_stream.line(
-            "s",
-            f"f_c2s_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_stream,
+            source,
+            y_field=f"f_c2s_{i}",
+            source_color=PHASE_COLORS["core"],
+            target_color=SPRAY_COLORS[i],
             line_width=1,
             line_alpha=0.8,
-            line_color=PHASE_COLORS["core"],
-            legend_label=f"f_c2s[{i}]",
         )
-        p_mom_stream.line(
-            "s",
-            f"f_s2a_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_stream,
+            source,
+            y_field=f"f_s2a_{i}",
+            source_color=SPRAY_COLORS[i],
+            target_color=PHASE_COLORS["air"],
             line_width=1,
             line_alpha=0.8,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"f_s2a[{i}]",
         )
-        p_mom_stream.line(
-            "s",
-            f"f_s2sur_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_stream,
+            source,
+            y_field=f"f_s2sur_{i}",
+            source_color=SPRAY_COLORS[i],
+            target_color=SURROUNDINGS_COLOR,
             line_width=1,
             line_alpha=0.8,
-            line_color=SPRAY_COLORS[i],
-            line_dash="dotted",
-            legend_label=f"f_s2sur[{i}]",
         )
-    p_mom_stream.legend.location = "top_left"
+    _add_transfer_encoding_note(p_mom_stream)
     _configure_linear_grid_density([p_mom_stream])
     _add_hover_tool(
         p_mom_stream,
@@ -684,77 +766,73 @@ def _save_plot(source: ColumnDataSource, s_end: float, path: Path) -> None:
         sizing_mode="stretch_width",
         tools=DEFAULT_TOOLS,
     )
-    mom_rad_renderer = p_mom_radial.line(
-        "s",
-        "f_ra2sur",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["air"],
-        legend_label="f_ra2sur",
+    mom_rad_renderer = _plot_transfer_term(
+        p_mom_radial,
+        source,
+        y_field="f_ra2sur",
+        source_color=PHASE_COLORS["air"],
+        target_color=SURROUNDINGS_COLOR,
     )
-    p_mom_radial.line(
-        "s",
-        "f_rc2a",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        legend_label="f_rc2a",
+    _plot_transfer_term(
+        p_mom_radial,
+        source,
+        y_field="f_rc2a",
+        source_color=PHASE_COLORS["core"],
+        target_color=PHASE_COLORS["air"],
     )
-    p_mom_radial.line(
-        "s",
-        "f_rs2a_total",
-        source=source,
-        line_width=2,
-        line_color=SPRAY_COLORS[2],
-        legend_label="f_rs2a_total",
+    _plot_transfer_term(
+        p_mom_radial,
+        source,
+        y_field="f_rs2a_total",
+        source_color=SPRAY_COLORS[2],
+        target_color=PHASE_COLORS["air"],
+        dashed=True,
     )
-    p_mom_radial.line(
-        "s",
-        "f_rs2sur_total",
-        source=source,
-        line_width=2,
-        line_color=SPRAY_COLORS[3],
-        legend_label="f_rs2sur_total",
+    _plot_transfer_term(
+        p_mom_radial,
+        source,
+        y_field="f_rs2sur_total",
+        source_color=SPRAY_COLORS[3],
+        target_color=SURROUNDINGS_COLOR,
+        dashed=True,
     )
-    p_mom_radial.line(
-        "s",
-        "f_rc2s_total",
-        source=source,
-        line_width=2,
-        line_color=PHASE_COLORS["core"],
-        line_dash="dashed",
-        legend_label="f_rc2s_total",
+    _plot_transfer_term(
+        p_mom_radial,
+        source,
+        y_field="f_rc2s_total",
+        source_color=PHASE_COLORS["core"],
+        target_color=SPRAY_COLORS[2],
+        dashed=True,
     )
     for i in range(num_drop_classes):
-        p_mom_radial.line(
-            "s",
-            f"f_rc2s_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_radial,
+            source,
+            y_field=f"f_rc2s_{i}",
+            source_color=PHASE_COLORS["core"],
+            target_color=SPRAY_COLORS[i],
             line_width=1,
             line_alpha=0.8,
-            line_color=PHASE_COLORS["core"],
-            legend_label=f"f_rc2s[{i}]",
         )
-        p_mom_radial.line(
-            "s",
-            f"f_rs2a_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_radial,
+            source,
+            y_field=f"f_rs2a_{i}",
+            source_color=SPRAY_COLORS[i],
+            target_color=PHASE_COLORS["air"],
             line_width=1,
             line_alpha=0.8,
-            line_color=SPRAY_COLORS[i],
-            legend_label=f"f_rs2a[{i}]",
         )
-        p_mom_radial.line(
-            "s",
-            f"f_rs2sur_{i}",
-            source=source,
+        _plot_transfer_term(
+            p_mom_radial,
+            source,
+            y_field=f"f_rs2sur_{i}",
+            source_color=SPRAY_COLORS[i],
+            target_color=SURROUNDINGS_COLOR,
             line_width=1,
             line_alpha=0.8,
-            line_color=SPRAY_COLORS[i],
-            line_dash="dotted",
-            legend_label=f"f_rs2sur[{i}]",
         )
-    p_mom_radial.legend.location = "top_left"
+    _add_transfer_encoding_note(p_mom_radial)
     _configure_linear_grid_density([p_mom_radial])
     _add_hover_tool(
         p_mom_radial,
