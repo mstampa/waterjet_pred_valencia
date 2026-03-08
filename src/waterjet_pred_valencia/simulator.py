@@ -490,18 +490,14 @@ def ode_right_hand_side(
             + 6 * yc.Us[i] * f_rs2sur[i]
         ) / (np.pi * yc.ND[i] * (yc.Us[i] ** 2) * (d_drop[i] ** 3) * rho_w * den_s[i])
 
-        if (i == 1) and (theta_s_deg := np.rad2deg(yc.theta_s[i])) > 80.0:
-            from inspect import currentframe, getframeinfo
-
-            frameinfo = getframeinfo(currentframe())  # pyright: ignore
-            logger.debug(
-                f"dyds.theta_s[1] inputs at {s=:.4f} m (simulator.py:{frameinfo.lineno}):"
-            )
-            logger.debug(f"theta_s[{i}] = {yc.theta_s[i]:.4f} rad = {theta_s_deg:.4f}°")
+        # TODO: Remove this quick-and-dirty debug printout once dyds.theta_s is fixed.
+        if (i == 0) and (theta_s_deg := np.rad2deg(yc.theta_s[i])) > 80.0:
+            logger.debug(f"dyds.theta_s[0] inputs at {s=:.4f} m (simulator.py:486):")
+            logger.debug(f"theta_s[{i}]={yc.theta_s[i]:.4f} rad ({theta_s_deg:.4f}°)")
             logger.debug(f"{yc.ND[i]=:.4f} drops/s, {yc.Us[i]=:.4f} m/s")
             logger.debug(f"{sin_s[i]=:.4f}, {den_s[i]=:.4f}")
             logger.debug(
-                f"{f_rc2s[i]=:.4f} N/m, {f_rs2a[i]=:.4f} N/m, {f_rs2sur[i] =:.4f} N/m"
+                f"{f_rc2s[i]=:.4f} N/m, {f_rs2a[i]=:.4f} N/m, {f_rs2sur[i]=:.4f} N/m"
             )
             logger.debug(
                 f"Result dyds.theta_s[{i}] = {np.rad2deg(dyds.theta_s[i]):.4f}"

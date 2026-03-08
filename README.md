@@ -42,13 +42,13 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 ### Features
 
 - Simulates, traces, and plots evolution of trajectory, state variables, mass and momentum terms.
-- Programmed defensively: simulation aborts if a physically impossible situation (e.g., a negative diameter) is detected.
+- Physical plausibility checks: simulation aborts early if it detects an impossible situation, like a negative diameter.
 - Debug mode enables live console output and auto-dropping into the Python debugger (PDB) on error.
 - Tracing can be configured with different strides (e.g., one snapshot every 10 centimeters).
 - Trace can be exported to CSV.
 - Plots are produced as interactive HTMLs, independent of the simulation terminating successfully or due to error. 
 Exception: plots are not produced when the debugger (PDB) gets activated.
-- Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) designed to be easily importable into other projects.
+- Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) is designed to be easily importable into other projects.
 
 ![Example plot](doc/example_plot.png)
 
