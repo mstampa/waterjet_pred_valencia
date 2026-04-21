@@ -36,7 +36,7 @@ Homepage = "https://github.com/mstampa/waterjet_pred_valencia"
 waterjet-pred-valencia = "waterjet_pred_valencia.cli:main"
 
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = ["I", "UP"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
