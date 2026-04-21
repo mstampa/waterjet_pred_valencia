@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import ClassVar, List, Optional
+from typing import ClassVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -37,7 +37,7 @@ class JetState:
     """
 
     # Order of variables in state vector.
-    BASE_VARS: ClassVar[List[str]] = [
+    BASE_VARS: ClassVar[list[str]] = [
         "Uc",
         "Dc",
         "Ua",
@@ -50,7 +50,7 @@ class JetState:
         "x",
         "y",
     ]
-    SPRAY_VARS: ClassVar[List[str]] = ["ND", "Us", "theta_s"]
+    SPRAY_VARS: ClassVar[list[str]] = ["ND", "Us", "theta_s"]
 
     Uc: float = 0.0
     Dc: float = 0.0
@@ -132,7 +132,7 @@ class JetState:
         )
 
     @staticmethod
-    def get_idx(name: str, s_class: Optional[int] = None) -> int:
+    def get_idx(name: str, s_class: int | None = None) -> int:
         """Compute the flat array index for a given state variable.
 
         Args:

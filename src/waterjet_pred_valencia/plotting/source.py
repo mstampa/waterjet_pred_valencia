@@ -1,6 +1,6 @@
 """Build bokeh data sources from solver output and trace data."""
 
-from typing import Callable, Dict, Tuple
+from collections.abc import Callable
 
 import numpy as np
 from bokeh.models import ColumnDataSource
@@ -12,8 +12,8 @@ from ..parameters import num_drop_classes
 
 
 def build_source_from_solution(
-    sol: OdeResult, state_idx: Dict[str, int]
-) -> Tuple[ColumnDataSource, float]:
+    sol: OdeResult, state_idx: dict[str, int]
+) -> tuple[ColumnDataSource, float]:
     """Build a bokeh data source from a complete ODE solution.
 
     Args:
@@ -28,7 +28,7 @@ def build_source_from_solution(
     n_rows = sol.t.size
     nan_series = np.full((n_rows,), np.nan, dtype=float)
 
-    data: Dict[str, np.ndarray] = {
+    data: dict[str, np.ndarray] = {
         "s": sol.t,
         "Uc": sol.y[JetState.get_idx("Uc"), :],
         "Dc": sol.y[JetState.get_idx("Dc"), :],
@@ -76,7 +76,7 @@ def build_source_from_solution(
     return ColumnDataSource(data=data), s_end
 
 
-def build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, float]:
+def build_source_from_trace(trace_df: DataFrame) -> tuple[ColumnDataSource, float]:
     """Build a bokeh data source from traced partial simulation data.
 
     Args:
@@ -100,7 +100,7 @@ def build_source_from_trace(trace_df: DataFrame) -> Tuple[ColumnDataSource, floa
         return np.full((n_rows,), np.nan, dtype=float)
 
     s = _trace_col("s")
-    data: Dict[str, np.ndarray] = {
+    data: dict[str, np.ndarray] = {
         "s": s,
         "Uc": _trace_col("Uc"),
         "Dc": _trace_col("Dc"),

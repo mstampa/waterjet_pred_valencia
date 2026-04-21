@@ -7,7 +7,6 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from tempfile import gettempdir
 from time import perf_counter
-from typing import Dict, Optional
 
 from pandas import DataFrame
 
@@ -49,7 +48,7 @@ def run_simulation(args: Namespace) -> None:
 
     # NOTE: Use bypass to define manual overrides for dyds computations. Example:
     # bypass = {"Uc": -0.01, "theta_s": 0.001}
-    bypass: Optional[Dict[str, float]] = None
+    bypass: dict[str, float] | None = None
 
     # Tracer records the state of most variables at regular intervals.
     # The recording is used to generate plots of both successful and failed simulations.
@@ -58,7 +57,7 @@ def run_simulation(args: Namespace) -> None:
 
     logger.info("Starting simulation...")
     start_time: float = perf_counter()
-    failed_error: Optional[Exception] = None
+    failed_error: Exception | None = None
     result = None
     try:
         result = simulate(

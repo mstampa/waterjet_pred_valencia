@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Dict
 
 from pandas import DataFrame
 from scipy.integrate._ivp.ivp import OdeResult
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def plot_solution(
     sol: OdeResult,
-    state_idx: Dict[str, int],
+    state_idx: dict[str, int],
     path: Path,
     s_breakup: float | None = None,
 ) -> None:

@@ -1,6 +1,6 @@
 """Reusable plotting helpers for panel rendering and styling."""
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 from bokeh.models import ColumnDataSource, HoverTool, Label, Range1d, Span

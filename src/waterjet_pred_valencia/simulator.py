@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 from sys import exit
-from typing import Dict, Literal, Optional, Tuple
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -55,15 +55,15 @@ class SimulationResult:
     """
 
     status: Literal["completed", "failed"]
-    state_idx: Dict[str, int]
-    sol: Optional[OdeResult] = None
-    error: Optional[Exception] = None
+    state_idx: dict[str, int]
+    sol: OdeResult | None = None
+    error: Exception | None = None
 
 
-def get_state_index_map() -> Dict[str, int]:
+def get_state_index_map() -> dict[str, int]:
     """Build a state-name -> flat-index map for plotting and post-processing."""
 
-    idx: Dict[str, int] = {}
+    idx: dict[str, int] = {}
     for name in JetState.BASE_VARS:
         idx[name] = JetState.get_idx(name)
     for name in JetState.SPRAY_VARS:
@@ -77,12 +77,12 @@ def simulate(
     injection_speed: float,
     nozzle_diameter: float,
     injection_height: float = 0.0,
-    s_span: Tuple[float, float] = (0, 100),
+    s_span: tuple[float, float] = (0, 100),
     max_step: float = 1e-3,
     method: str = "Radau",
     debug: bool = False,
-    bypass: Optional[Dict[str, float]] = None,
-    tracer: Optional[Tracer] = None,
+    bypass: dict[str, float] | None = None,
+    tracer: Tracer | None = None,
 ) -> SimulationResult:
     """Simulate a fire stream trajectory.
 
@@ -152,7 +152,7 @@ def simulate(
     ev_mass.direction = -1  # pyright: ignore
 
     # This is where the number magic happens!
-    state_idx: Dict[str, int] = get_state_index_map()
+    state_idx: dict[str, int] = get_state_index_map()
     sol: OdeResult
     last_s: float = np.nan
 
@@ -202,8 +202,8 @@ def ode_right_hand_side(
     y: NDArray[DTYPE],
     params: SimParams,
     debug: bool = False,
-    bypass: Optional[Dict[str, float]] = None,
-    tracer: Optional[Tracer] = None,
+    bypass: dict[str, float] | None = None,
+    tracer: Tracer | None = None,
 ) -> NDArray[DTYPE]:
     """Compute the derivative of the state vector for a single simulation step.
 

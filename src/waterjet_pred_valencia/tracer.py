@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class TraceRowWide:
     """Represents one 'wide' row: All scalars and vector elements in a single dict."""
 
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 class Tracer:
@@ -37,10 +37,10 @@ class Tracer:
             s_stride: Spacing between recordings along 's' [m]
             decimals: Number of decimals to print into output file.
         """
-        self.rows: List[TraceRowWide] = []
+        self.rows: list[TraceRowWide] = []
         self.s_stride = float(s_stride)
         self.decimals = int(decimals)
-        self._next_s_mark: Optional[float] = None  # Set on first snapshot.
+        self._next_s_mark: float | None = None  # Set on first snapshot.
         logger.info(f"Tracer initialized with stride={s_stride} m, {decimals=}.")
         return
 
@@ -75,8 +75,8 @@ class Tracer:
     def snapshot(
         self,
         s: float,
-        scalars: Dict[str, float],
-        vectors: Dict[str, NDArray[np.floating]],
+        scalars: dict[str, float],
+        vectors: dict[str, NDArray[np.floating]],
     ) -> None:
         """Append a 'wide' row if s advanced past the next stride mark.
 
@@ -88,7 +88,7 @@ class Tracer:
         if not self._should_record(float(s)):
             return
 
-        row: Dict[str, Any] = {}
+        row: dict[str, Any] = {}
 
         # Always include s (rounded).
         row["s"] = np.round(float(s), self.decimals)
