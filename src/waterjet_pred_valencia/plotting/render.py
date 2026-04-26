@@ -1,12 +1,15 @@
 """Top-level rendering and layout composition for simulation plots."""
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from bokeh.layouts import column, row
 from bokeh.models import ColumnDataSource, Range1d
 from bokeh.plotting import output_file, save
 
+from .helpers import add_breakup_marker
 from .panels import (
     build_angle_panel,
     build_diameter_panel,
@@ -18,33 +21,41 @@ from .panels import (
     build_transfer_radial_panel,
     build_transfer_stream_panel,
 )
-from .helpers import add_breakup_marker
 from .style import configure_linear_grid_density
 
 logger = logging.getLogger(__name__)
 
 
-def save_plot(
+@dataclass(frozen=True)
+class PlotLayoutParts:
+    """Reusable Bokeh layout fragments for one simulation plot view.
+
+    Attributes:
+        trajectory: Main X-Y trajectory plot.
+        diagnostics: Lower multi-panel diagnostic grid.
+        full_layout: Complete static layout combining both sections.
+    """
+
+    trajectory: Any
+    diagnostics: Any
+    full_layout: Any
+
+
+def build_plot_layout_parts(
     source: ColumnDataSource,
     s_end: float,
-    path: Path,
     s_breakup: float | None = None,
-) -> None:
-    """Render and save the complete multi-panel simulation plot.
+) -> PlotLayoutParts:
+    """Build reusable Bokeh layout fragments from prepared plot data.
 
     Args:
         source: Prepared bokeh datasource with plotting columns.
         s_end: Maximum s-value used for horizontal range limits.
-        path: Output path for the generated html file.
         s_breakup: Optional breakup location to draw as dotted vertical marker.
-    """
 
-    logger.info(f"Saving plot to {path}...")
-    path_str = str(path)
-    assert path_str.endswith("html"), (
-        f"Path suffix must be .html, but is {path.suffix}."
-    )
-    output_file(path_str, title="Fire stream simulation")
+    Returns:
+        Reusable Bokeh layout fragments for trajectory, diagnostics, and full view.
+    """
 
     x_range = Range1d(0.0, s_end + 0.1)
     p_traj = build_trajectory_panel(source)
@@ -82,14 +93,52 @@ def save_plot(
         ]
     )
 
-    plot_layout = column(
-        p_traj,
+    diagnostics = column(
         row(p_speeds, p_diameters, sizing_mode="stretch_width"),
         row(p_angles, p_nd, sizing_mode="stretch_width"),
         row(p_rho, p_mass, sizing_mode="stretch_width"),
         row(p_mom_stream, p_mom_radial, sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
     )
-    save(plot_layout)
+    full_layout = column(
+        p_traj,
+        diagnostics,
+        sizing_mode="stretch_width",
+    )
+    return PlotLayoutParts(
+        trajectory=p_traj,
+        diagnostics=diagnostics,
+        full_layout=full_layout,
+    )
+
+
+def save_plot(
+    source: ColumnDataSource,
+    s_end: float,
+    path: Path,
+    s_breakup: float | None = None,
+) -> None:
+    """Render and save the complete multi-panel simulation plot.
+
+    Args:
+        source: Prepared bokeh datasource with plotting columns.
+        s_end: Maximum s-value used for horizontal range limits.
+        path: Output path for the generated html file.
+        s_breakup: Optional breakup location to draw as dotted vertical marker.
+    """
+
+    logger.info(f"Saving plot to {path}...")
+    path_str = str(path)
+    assert path_str.endswith("html"), (
+        f"Path suffix must be .html, but is {path.suffix}."
+    )
+    output_file(path_str, title="Fire stream trajectory simulation")
+
+    plot_layout = build_plot_layout_parts(
+        source=source,
+        s_end=s_end,
+        s_breakup=s_breakup,
+    )
+    save(plot_layout.full_layout)
     logger.info("Plot saved.")
     return

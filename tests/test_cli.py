@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 
-"""Tests for CLI simulation orchestration."""
+"""Tests for CLI startup and interactive app orchestration."""
 
 from argparse import Namespace
 from pathlib import Path
 
-import pytest
-
 from waterjet_pred_valencia import cli
-from waterjet_pred_valencia.simulator import SimulationResult
 
 
 def _make_args(tmp_path: Path) -> Namespace:
@@ -25,58 +22,41 @@ def _make_args(tmp_path: Path) -> Namespace:
         speed=30.8,
         angle=24.0,
         nozzle=0.0254,
+        y0=0.0,
         csv=tmp_path / "trace.csv",
         debug=False,
         max_step=1e-3,
-        output=tmp_path / "plot.html",
+        port=5012,
         span=100.0,
+        show=False,
     )
 
 
-def test_run_simulation_crash_still_writes_plot_and_trace(tmp_path, monkeypatch):
-    """Ensure failed simulations still export plot and trace outputs."""
+def test_main_starts_panel_server_with_cli_arguments(tmp_path, monkeypatch):
+    """Ensure CLI forwards parsed arguments into Panel server startup."""
 
     args = _make_args(tmp_path)
+    captured: dict[str, object] = {}
 
-    def _fake_simulate(*_, **kwargs):
-        tracer = kwargs["tracer"]
-        tracer.snapshot(
-            s=0.0,
-            scalars={"x": 0.0, "y": 0.0, "theta_a_deg": 24.0, "theta_f_deg": 24.0},
-            vectors={},
-        )
-        raise AssertionError("forced failure for test")
+    def _fake_get_arguments() -> Namespace:
+        return args
 
-    monkeypatch.setattr(cli, "simulate", _fake_simulate)
+    def _fake_start_server(**kwargs) -> None:
+        captured.update(kwargs)
 
-    with pytest.raises(AssertionError, match="forced failure"):
-        cli.run_simulation(args)
+    monkeypatch.setattr(cli, "get_arguments", _fake_get_arguments)
+    monkeypatch.setattr(cli, "start_server", _fake_start_server)
 
-    assert args.output.exists()
-    assert args.csv.exists()
-
-
-def test_run_simulation_uses_solution_plot_on_success(tmp_path, monkeypatch):
-    """Ensure successful runs use full-solution plotting path only."""
-
-    args = _make_args(tmp_path)
-    called = {"plot_solution": 0, "plot_trace": 0}
-
-    def _fake_simulate(*_, **__):
-        return SimulationResult(status="completed", state_idx={}, sol=object())  # pyright: ignore
-
-    def _fake_plot_solution(*_, **__):
-        called["plot_solution"] += 1
-
-    def _fake_plot_trace(*_, **__):
-        called["plot_trace"] += 1
-
-    monkeypatch.setattr(cli, "simulate", _fake_simulate)
-    monkeypatch.setattr(cli, "plot_solution", _fake_plot_solution)
-    monkeypatch.setattr(cli, "plot_trace", _fake_plot_trace)
-
-    cli.run_simulation(args)
-
-    assert called["plot_solution"] == 1
-    assert called["plot_trace"] == 0
-    assert args.csv.exists()
+    assert cli.main() == 0
+    assert captured == {
+        "injection_angle_deg": args.angle,
+        "injection_speed": args.speed,
+        "nozzle_diameter": args.nozzle,
+        "injection_height": args.y0,
+        "span": args.span,
+        "max_step": args.max_step,
+        "debug": args.debug,
+        "csv_path": args.csv,
+        "port": args.port,
+        "show": args.show,
+    }

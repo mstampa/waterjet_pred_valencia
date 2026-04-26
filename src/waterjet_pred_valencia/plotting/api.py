@@ -1,4 +1,4 @@
-"""Public plotting functions used by the CLI and tests."""
+"""Public plotting functions used by the CLI, Panel app, and tests."""
 
 import logging
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 from pandas import DataFrame
 from scipy.integrate._ivp.ivp import OdeResult
 
-from .render import save_plot
+from .render import PlotLayoutParts, build_plot_layout_parts, save_plot
 from .source import build_source_from_solution, build_source_from_trace
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,26 @@ def plot_solution(
     return
 
 
+def build_solution_layout(
+    sol: OdeResult,
+    state_idx: dict[str, int],
+    s_breakup: float | None = None,
+) -> PlotLayoutParts:
+    """Build reusable Bokeh layouts from a successful ODE result.
+
+    Args:
+        sol: ODE solution object from solve_ivp.
+        state_idx: Mapping of variable names to indices in sol.y.
+        s_breakup: Optional breakup location shown as dotted vertical marker.
+
+    Returns:
+        Reusable trajectory and diagnostics layouts for the solution.
+    """
+
+    source, s_end = build_source_from_solution(sol, state_idx)
+    return build_plot_layout_parts(source=source, s_end=s_end, s_breakup=s_breakup)
+
+
 def plot_trace(
     trace_df: DataFrame,
     path: Path,
@@ -50,3 +70,21 @@ def plot_trace(
     source, s_end = build_source_from_trace(trace_df)
     save_plot(source=source, s_end=s_end, path=path, s_breakup=s_breakup)
     return
+
+
+def build_trace_layout(
+    trace_df: DataFrame,
+    s_breakup: float | None = None,
+) -> PlotLayoutParts:
+    """Build reusable Bokeh layouts from traced partial simulation data.
+
+    Args:
+        trace_df: Wide trace dataframe produced by Tracer.to_wide_dataframe().
+        s_breakup: Optional breakup location shown as dotted vertical marker.
+
+    Returns:
+        Reusable trajectory and diagnostics layouts for the trace.
+    """
+
+    source, s_end = build_source_from_trace(trace_df)
+    return build_plot_layout_parts(source=source, s_end=s_end, s_breakup=s_breakup)

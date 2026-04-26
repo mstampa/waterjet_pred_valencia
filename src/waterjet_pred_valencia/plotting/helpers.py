@@ -52,7 +52,9 @@ def new_panel(
         kwargs["height"] = height
     if match_aspect:
         kwargs["match_aspect"] = True
-    return figure(**kwargs)
+    fig = figure(**kwargs)
+    fig.toolbar.logo = None
+    return fig
 
 
 def add_series_from_specs(
@@ -168,8 +170,8 @@ def add_transfer_encoding_note(fig) -> None:
             + ", marker color=target phase"
             + ", dashed=total, grey=surroundings",
             text_font_size="9pt",
-            text_color="#303030",
-            background_fill_color="#ffffff",
+            text_color="#f0f0f0",
+            background_fill_color="#1f1f1f",
             background_fill_alpha=0.7,
         )
     )
@@ -231,7 +233,7 @@ def add_breakup_marker(fig, s_breakup: float | None) -> None:
         Span(
             location=s_breakup,
             dimension="height",
-            line_color="#4b4b4b",
+            line_color="#cfcfcf",
             line_width=2,
             line_dash="dotted",
         )

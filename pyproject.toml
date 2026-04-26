@@ -10,11 +10,12 @@ authors = [
 license = "GPL-3.0-or-later"
 readme = "README.md"
 
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "bokeh",
     "numpy",
     "pandas",
+    "panel",
     "pytest",
     "scipy",
     "sympy",
@@ -44,4 +45,3 @@ include = ["waterjet_pred_valencia*"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-

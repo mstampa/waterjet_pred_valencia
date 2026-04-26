@@ -46,8 +46,8 @@ Trajectory and spray behavior are modeled over the streamwise axis "s".
 - Debug mode enables live console output and auto-dropping into the Python debugger (PDB) on error.
 - Tracing can be configured with different strides (e.g., one snapshot every 10 centimeters).
 - Trace can be exported to CSV.
-- Plots are produced as interactive HTMLs, independent of the simulation terminating successfully or due to error. 
-Exception: plots are not produced when the debugger (PDB) gets activated.
+- Plots are produced in a local interactive browser app with a live initial-condition control panel.
+- If a run fails after trace rows were recorded, the app still updates with a partial trace plot.
 - Core logic in [simulator.py](src/waterjet_pred_valencia/simulator.py) is designed to be easily importable into other projects.
 
 ![Example plot](doc/example_plot.png)
@@ -58,7 +58,7 @@ Key dependencies of this package are:
 
 * [NumPy](https://numpy.org) for numerical computing.
 * [SciPy](https://scipy.org) for solving the ODE.
-* [bokeh](https://bokeh.org) for plotting.
+* [bokeh](https://bokeh.org) and [panel](https://panel.holoviz.org) for plotting and the local interactive app.
 
 Developers wishing to contribute also require:
 
@@ -93,12 +93,13 @@ python -m pip install -e .
 
 ### Usage
 
-To run a simulation with default parameters:
+To start the interactive simulation app with default parameters:
 
 ```bash
 python -m waterjet_pred_valencia.cli
 ```
 Run the command with the `-h` or `--help` option for a detailed usage description.
+By default the command opens a local browser window and serves the plots on port `5007`.
 
 The most important user-supplied input parameters for any simulation are:
 * `theta_0`: injection angle above the horizon, 0–90°.
@@ -107,6 +108,19 @@ The most important user-supplied input parameters for any simulation are:
 
 To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
+
+### Validation
+
+Regular users can ignore this section. For development and support work, prefer
+`uv` so validation runs against a managed project environment:
+
+```bash
+uv sync --dev
+uv run python -m waterjet_pred_valencia.cli --help
+uv run python -m pytest tests/test_cli.py tests/test_plotting.py tests/test_plotting_session.py
+uv run python -m pytest
+uv run ruff check .
+```
 
 ---
 

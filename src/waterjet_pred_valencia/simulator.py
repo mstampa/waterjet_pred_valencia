@@ -14,6 +14,7 @@ Parameter "max_step" can be adjusted to trade accuracy for performance.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from sys import exit
@@ -83,6 +84,7 @@ def simulate(
     debug: bool = False,
     bypass: dict[str, float] | None = None,
     tracer: Tracer | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> SimulationResult:
     """Simulate a fire stream trajectory.
 
@@ -99,6 +101,7 @@ def simulate(
         debug: Enable debug mode (console printouts, auto-drop into PDB).
         bypass: Map of derivatives to override with provided values.
         tracer: Records variables (not only state vector) per simulation step.
+        progress_callback: Optional callback receiving current streamwise `s`.
 
     Returns:
         Structured simulation output including solver results and index map.
@@ -168,6 +171,8 @@ def simulate(
         """
         nonlocal last_s
         last_s = float(s)
+        if progress_callback is not None:
+            progress_callback(last_s)
         return ode_right_hand_side(
             s, y, params=params, debug=debug, bypass=bypass, tracer=tracer
         )
