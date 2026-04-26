@@ -1,8 +1,10 @@
 """Panel session helpers for live simulation plotting."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Thread
 from time import perf_counter
 from typing import Any
 
@@ -15,11 +17,17 @@ from .api import PlotLayoutParts, build_solution_layout, build_trace_layout
 
 logger = logging.getLogger(__name__)
 
+_APP_TITLE = "Fire stream trajectory simulation"
+
 _CONTROL_PANEL_STYLES = {
-    "border": "1px solid #d9d9d9",
+    "border": "1px solid #3a3a3a",
     "border-radius": "6px",
     "padding": "10px 12px",
-    "background": "#fafafa",
+    "background": "#1f1f1f",
+}
+
+_STATUS_PANE_STYLES = {
+    "font-size": "1.1rem",
 }
 
 
@@ -43,6 +51,7 @@ def run_simulation_plot(
     max_step: float = 1e-3,
     debug: bool = False,
     csv_path: Path | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> tuple[PlotLayoutParts | None, str]:
     """Run one simulation and build reusable plot layouts for its result.
 
@@ -55,6 +64,7 @@ def run_simulation_plot(
         max_step: Maximum ODE integration step size [m].
         debug: Enable solver debug mode.
         csv_path: Optional trace export path written after the run.
+        progress_callback: Optional callback receiving current streamwise `s`.
 
     Returns:
         Tuple of reusable plot layouts and a short status message. The layout is
@@ -78,6 +88,7 @@ def run_simulation_plot(
             max_step=max_step,
             debug=debug,
             tracer=tracer,
+            progress_callback=progress_callback,
         )
     except Exception as exc:
         trace_df = tracer.to_wide_dataframe()
@@ -112,6 +123,10 @@ def create_simulation_plot_session(
     csv_path: Path | None = None,
 ) -> SimulationPlotSession:
     """Build one interactive Panel app for simulations.
+
+    First render stays cheap so browser can open immediately. The initial
+    simulation then runs in a background thread while the status line reports
+    elapsed wall-clock time and latest streamwise `s`.
 
     Args:
         injection_angle_deg: Initial angle shown in the control panel [deg].
@@ -157,17 +172,68 @@ def create_simulation_plot_session(
         button_type="primary",
         sizing_mode="stretch_width",
     )
-    status_pane = pn.pane.Markdown("Ready.", sizing_mode="stretch_width")
+    status_pane = pn.pane.Markdown(
+        "Ready.",
+        sizing_mode="stretch_width",
+        styles=_STATUS_PANE_STYLES,
+    )
     trajectory_pane = pn.pane.Bokeh(sizing_mode="stretch_width", min_height=420)
     diagnostics_pane = pn.pane.Bokeh(sizing_mode="stretch_width")
 
-    run_state = {"active": False}
+    curdoc = getattr(pn.state, "curdoc", None)
+    run_state = {
+        "active": False,
+        "started_at": 0.0,
+        "last_s": None,
+        "periodic_callback": None,
+    }
+
+    def _set_status(status: str) -> None:
+        status_pane.object = status
+        return
+
+    def _format_running_status() -> str:
+        elapsed_s = max(0.0, perf_counter() - float(run_state["started_at"]))
+        last_s = run_state["last_s"]
+        if last_s is None:
+            return f"Simulating... {elapsed_s:.1f} s elapsed, s=n/a."
+        return f"Simulating... {elapsed_s:.1f} s elapsed, s={float(last_s):.3f} m."
+
+    def _stop_periodic_status_updates() -> None:
+        periodic_callback = run_state["periodic_callback"]
+        if curdoc is None or periodic_callback is None:
+            return
+        curdoc.remove_periodic_callback(periodic_callback)
+        run_state["periodic_callback"] = None
+        return
+
+    def _queue_ui_callback(callback: Callable[[], None]) -> None:
+        if curdoc is None:
+            callback()
+            return
+        curdoc.add_next_tick_callback(callback)
+        return
+
+    def _refresh_running_status() -> None:
+        if not run_state["active"]:
+            return
+        _set_status(_format_running_status())
+        return
+
+    def _start_periodic_status_updates() -> None:
+        if curdoc is None or run_state["periodic_callback"] is not None:
+            return
+        run_state["periodic_callback"] = curdoc.add_periodic_callback(
+            _refresh_running_status,
+            1000,
+        )
+        return
 
     def _apply_plot(parts: PlotLayoutParts | None, status: str) -> None:
         if parts is not None:
             trajectory_pane.object = parts.trajectory
             diagnostics_pane.object = parts.diagnostics
-        status_pane.object = status
+        _set_status(status)
         return
 
     def _current_control_values() -> dict[str, float]:
@@ -178,28 +244,35 @@ def create_simulation_plot_session(
             "injection_height": float(height_input.value),
         }
 
-    def _render_current_state() -> None:
+    def _compute_current_state() -> tuple[PlotLayoutParts | None, str]:
         try:
-            parts, status = run_simulation_plot(
+            return run_simulation_plot(
                 span=span,
                 max_step=max_step,
                 debug=debug,
                 csv_path=csv_path,
+                progress_callback=lambda s: run_state.__setitem__("last_s", float(s)),
                 **_current_control_values(),
             )
         except Exception as exc:
             logger.exception(
                 "Interactive simulation failed before any plot data existed."
             )
-            _apply_plot(
+            return (
                 None,
                 f"Simulation failed before any plot data was recorded: `{exc}`.",
             )
-        else:
-            _apply_plot(parts, status)
-        finally:
-            run_state["active"] = False
-            replot_button.disabled = False
+
+    def _finish_run(parts: PlotLayoutParts | None, status: str) -> None:
+        _stop_periodic_status_updates()
+        run_state["active"] = False
+        replot_button.disabled = False
+        _apply_plot(parts, status)
+        return
+
+    def _run_current_state_in_background() -> None:
+        parts, status = _compute_current_state()
+        _queue_ui_callback(lambda: _finish_run(parts, status))
         return
 
     def _schedule_refresh() -> None:
@@ -207,13 +280,17 @@ def create_simulation_plot_session(
             return
 
         run_state["active"] = True
+        run_state["started_at"] = perf_counter()
+        run_state["last_s"] = 0.0
         replot_button.disabled = True
-        status_pane.object = "Simulating..."
-        curdoc = getattr(pn.state, "curdoc", None)
+        _set_status(_format_running_status())
         if curdoc is None:
-            _render_current_state()
+            parts, status = _compute_current_state()
+            _finish_run(parts, status)
             return
-        curdoc.add_next_tick_callback(_render_current_state)
+
+        _start_periodic_status_updates()
+        Thread(target=_run_current_state_in_background, daemon=True).start()
         return
 
     replot_button.on_click(lambda _: _schedule_refresh())
@@ -229,10 +306,10 @@ def create_simulation_plot_session(
             speed_input,
             nozzle_input,
             height_input,
-            replot_button,
             sizing_mode="stretch_width",
         ),
         status_pane,
+        replot_button,
         sizing_mode="stretch_width",
         styles=_CONTROL_PANEL_STYLES,
     )
@@ -259,6 +336,9 @@ def start_server(
 ) -> None:
     """Start a local Panel server for live water-jet plotting.
 
+    Each browser session gets a fresh layout and starts its first simulation
+    after the page is already servable, which avoids blocking browser startup.
+
     Args:
         injection_angle_deg: Initial angle shown in the control panel [deg].
         injection_speed: Initial nozzle exit speed shown in the control panel [m/s].
@@ -273,17 +353,22 @@ def start_server(
     """
 
     pn = _load_panel()
-    session = create_simulation_plot_session(
-        injection_angle_deg=injection_angle_deg,
-        injection_speed=injection_speed,
-        nozzle_diameter=nozzle_diameter,
-        injection_height=injection_height,
-        span=span,
-        max_step=max_step,
-        debug=debug,
-        csv_path=csv_path,
+    pn.serve(
+        lambda: create_simulation_plot_session(
+            injection_angle_deg=injection_angle_deg,
+            injection_speed=injection_speed,
+            nozzle_diameter=nozzle_diameter,
+            injection_height=injection_height,
+            span=span,
+            max_step=max_step,
+            debug=debug,
+            csv_path=csv_path,
+        ).layout,
+        port=port,
+        show=show,
+        threaded=True,
+        title=_APP_TITLE,
     )
-    pn.serve(session.layout, port=port, show=show, threaded=True)
     return
 
 
@@ -305,6 +390,7 @@ def _load_panel() -> Any:
         ) from exc
 
     pn.extension()
+    pn.config.theme = "dark"
     return pn
 
 

@@ -168,8 +168,8 @@ def add_transfer_encoding_note(fig) -> None:
             + ", marker color=target phase"
             + ", dashed=total, grey=surroundings",
             text_font_size="9pt",
-            text_color="#303030",
-            background_fill_color="#ffffff",
+            text_color="#f0f0f0",
+            background_fill_color="#1f1f1f",
             background_fill_alpha=0.7,
         )
     )

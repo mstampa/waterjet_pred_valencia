@@ -132,7 +132,7 @@ def save_plot(
     assert path_str.endswith("html"), (
         f"Path suffix must be .html, but is {path.suffix}."
     )
-    output_file(path_str, title="Fire stream simulation")
+    output_file(path_str, title="Fire stream trajectory simulation")
 
     plot_layout = build_plot_layout_parts(
         source=source,

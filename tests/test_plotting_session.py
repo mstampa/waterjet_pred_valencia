@@ -53,9 +53,35 @@ class _FakeLayout:
 class _FakeDoc:
     def __init__(self):
         self.callbacks = []
+        self.periodic_callbacks = []
+        self.removed_periodic_callbacks = []
 
     def add_next_tick_callback(self, callback):
         self.callbacks.append(callback)
+
+    def add_periodic_callback(self, callback, period):
+        handle = SimpleNamespace(callback=callback, period=period)
+        self.periodic_callbacks.append(handle)
+        return handle
+
+    def remove_periodic_callback(self, callback):
+        self.removed_periodic_callbacks.append(callback)
+
+
+class _FakeThread:
+    instances = []
+
+    def __init__(self, target, daemon):
+        self.target = target
+        self.daemon = daemon
+        self.started = False
+        self.__class__.instances.append(self)
+
+    def start(self):
+        self.started = True
+
+    def run(self):
+        self.target()
 
 
 class _FakePanel:
@@ -121,8 +147,9 @@ def test_run_simulation_plot_uses_trace_layout_after_partial_failure(monkeypatch
 
 
 def test_create_simulation_plot_session_shows_simulating_then_updates(monkeypatch):
-    """Button click should publish a temporary status before queued rerender runs."""
+    """Startup and button click should show progress before queued rerender runs."""
 
+    _FakeThread.instances = []
     doc = _FakeDoc()
     fake_panel = _FakePanel(doc)
     fake_parts = PlotLayoutParts(
@@ -141,6 +168,10 @@ def test_create_simulation_plot_session_shows_simulating_then_updates(monkeypatc
         lambda **kwargs: calls.append(kwargs)
         or (fake_parts, "Simulation updated in 0.001 s."),
     )
+    monkeypatch.setattr(
+        "waterjet_pred_valencia.plotting.session.Thread",
+        _FakeThread,
+    )
 
     session = create_simulation_plot_session(
         injection_angle_deg=24.0,
@@ -149,27 +180,34 @@ def test_create_simulation_plot_session_shows_simulating_then_updates(monkeypatc
     )
 
     controls = session.layout.children[1]
-    button = controls.children[1].children[4]
+    button = controls.children[3]
     status_pane = controls.children[2]
     trajectory_pane = session.layout.children[0]
     diagnostics_pane = session.layout.children[2]
 
-    assert status_pane.object == "Simulating..."
+    assert status_pane.object.startswith("Simulating...")
+    assert len(doc.periodic_callbacks) == 1
+    assert doc.periodic_callbacks[0].period == 1000
+    assert len(_FakeThread.instances) == 1
+    _FakeThread.instances.pop(0).run()
     assert len(doc.callbacks) == 1
     doc.callbacks.pop()()
     assert status_pane.object.startswith("Simulation updated")
     assert trajectory_pane.object is fake_parts.trajectory
     assert diagnostics_pane.object is fake_parts.diagnostics
+    assert doc.removed_periodic_callbacks
 
     button.click()
-    assert status_pane.object == "Simulating..."
+    assert status_pane.object.startswith("Simulating...")
+    assert len(doc.periodic_callbacks) == 2
+    _FakeThread.instances.pop(0).run()
     assert len(doc.callbacks) == 1
     doc.callbacks.pop()()
     assert len(calls) == 2
 
 
 def test_start_server_serves_created_layout(monkeypatch):
-    """Server startup should pass created layout into Panel serve."""
+    """Server startup should pass a fresh layout factory into Panel serve."""
 
     doc = _FakeDoc()
     fake_panel = _FakePanel(doc)
@@ -193,7 +231,11 @@ def test_start_server_serves_created_layout(monkeypatch):
         show=False,
     )
 
-    assert fake_panel.served == (
-        fake_layout,
-        {"port": 5010, "show": False, "threaded": True},
-    )
+    layout_factory, kwargs = fake_panel.served
+    assert layout_factory() is fake_layout
+    assert kwargs == {
+        "port": 5010,
+        "show": False,
+        "threaded": True,
+        "title": "Fire stream trajectory simulation",
+    }
