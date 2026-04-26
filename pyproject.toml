@@ -15,6 +15,7 @@ dependencies = [
     "bokeh",
     "numpy",
     "pandas",
+    "panel",
     "pytest",
     "scipy",
     "sympy",
@@ -44,4 +45,3 @@ include = ["waterjet_pred_valencia*"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-
