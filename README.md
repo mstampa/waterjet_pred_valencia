@@ -109,6 +109,19 @@ The most important user-supplied input parameters for any simulation are:
 To play around with physical and model constants (e.g., the air entrainment rate `alpha`),
 edit [parameters.py](src/waterjet_pred_valencia/parameters.py).
 
+### Validation
+
+Regular users can ignore this section. For development and support work, prefer
+`uv` so validation runs against a managed project environment:
+
+```bash
+uv sync --dev
+uv run python -m waterjet_pred_valencia.cli --help
+uv run python -m pytest tests/test_cli.py tests/test_plotting.py tests/test_plotting_session.py
+uv run python -m pytest
+uv run ruff check .
+```
+
 ---
 
 ## To-Dos

@@ -9,6 +9,7 @@ from bokeh.layouts import column, row
 from bokeh.models import ColumnDataSource, Range1d
 from bokeh.plotting import output_file, save
 
+from .helpers import add_breakup_marker
 from .panels import (
     build_angle_panel,
     build_diameter_panel,
@@ -20,7 +21,6 @@ from .panels import (
     build_transfer_radial_panel,
     build_transfer_stream_panel,
 )
-from .helpers import add_breakup_marker
 from .style import configure_linear_grid_density
 
 logger = logging.getLogger(__name__)

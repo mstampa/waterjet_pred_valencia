@@ -13,7 +13,7 @@ from waterjet_pred_valencia.tracer import Tracer
 
 def test_plot_trace_writes_html(tmp_path):
     params = SimParams(30.8, 24.0, 0.0254)
-    state = JetState.get_initial(30.8, 24.0, 0.0254)
+    state = JetState.get_initial(params)
     tracer = Tracer(s_stride=1e-9)
 
     ode_right_hand_side(0.0, state.to_array(), params=params, tracer=tracer)
@@ -28,7 +28,7 @@ def test_plot_trace_writes_html(tmp_path):
 
 def test_build_trace_layout_returns_top_and_diagnostics_sections():
     params = SimParams(30.8, 24.0, 0.0254)
-    state = JetState.get_initial(30.8, 24.0, 0.0254)
+    state = JetState.get_initial(params)
     tracer = Tracer(s_stride=1e-9)
 
     ode_right_hand_side(0.0, state.to_array(), params=params, tracer=tracer)
