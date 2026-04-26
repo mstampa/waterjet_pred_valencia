@@ -52,7 +52,9 @@ def new_panel(
         kwargs["height"] = height
     if match_aspect:
         kwargs["match_aspect"] = True
-    return figure(**kwargs)
+    fig = figure(**kwargs)
+    fig.toolbar.logo = None
+    return fig
 
 
 def add_series_from_specs(
@@ -231,7 +233,7 @@ def add_breakup_marker(fig, s_breakup: float | None) -> None:
         Span(
             location=s_breakup,
             dimension="height",
-            line_color="#4b4b4b",
+            line_color="#cfcfcf",
             line_width=2,
             line_dash="dotted",
         )

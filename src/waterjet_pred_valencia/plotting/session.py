@@ -8,6 +8,7 @@ from threading import Thread
 from time import perf_counter
 from typing import Any
 
+from bokeh.themes import built_in_themes
 from pandas import DataFrame
 
 from ..parameters import get_breakup_distance
@@ -18,6 +19,7 @@ from .api import PlotLayoutParts, build_solution_layout, build_trace_layout
 logger = logging.getLogger(__name__)
 
 _APP_TITLE = "Fire stream trajectory simulation"
+_CONTROL_WIDTH = 180
 
 _CONTROL_PANEL_STYLES = {
     "border": "1px solid #3a3a3a",
@@ -147,30 +149,30 @@ def create_simulation_plot_session(
         name="Injection angle [deg]",
         value=float(injection_angle_deg),
         step=1.0,
-        sizing_mode="stretch_width",
+        width=_CONTROL_WIDTH,
     )
     speed_input = pn.widgets.FloatInput(
         name="Injection speed [m/s]",
         value=float(injection_speed),
         step=0.1,
-        sizing_mode="stretch_width",
+        width=_CONTROL_WIDTH,
     )
     nozzle_input = pn.widgets.FloatInput(
         name="Nozzle diameter [m]",
         value=float(nozzle_diameter),
         step=1e-4,
-        sizing_mode="stretch_width",
+        width=_CONTROL_WIDTH,
     )
     height_input = pn.widgets.FloatInput(
         name="Initial height [m]",
         value=float(injection_height),
         step=0.1,
-        sizing_mode="stretch_width",
+        width=_CONTROL_WIDTH,
     )
     replot_button = pn.widgets.Button(
         name="Simulate",
         button_type="primary",
-        sizing_mode="stretch_width",
+        width=_CONTROL_WIDTH,
     )
     status_pane = pn.pane.Markdown(
         "Ready.",
@@ -181,6 +183,8 @@ def create_simulation_plot_session(
     diagnostics_pane = pn.pane.Bokeh(sizing_mode="stretch_width")
 
     curdoc = getattr(pn.state, "curdoc", None)
+    if curdoc is not None:
+        curdoc.theme = built_in_themes["dark_minimal"]
     run_state = {
         "active": False,
         "started_at": 0.0,
@@ -293,9 +297,6 @@ def create_simulation_plot_session(
         Thread(target=_run_current_state_in_background, daemon=True).start()
         return
 
-    replot_button.on_click(lambda _: _schedule_refresh())
-    _schedule_refresh()
-
     controls = pn.Column(
         pn.pane.Markdown(
             "**Initial conditions**",
@@ -308,11 +309,13 @@ def create_simulation_plot_session(
             height_input,
             sizing_mode="stretch_width",
         ),
-        status_pane,
         replot_button,
+        status_pane,
         sizing_mode="stretch_width",
         styles=_CONTROL_PANEL_STYLES,
     )
+    replot_button.on_click(lambda _: _schedule_refresh())
+    _schedule_refresh()
     layout = pn.Column(
         trajectory_pane,
         controls,

@@ -26,6 +26,8 @@ class _FakeWidget:
         self.name = name
         self.value = value
         self.disabled = kwargs.get("disabled", False)
+        self.width = kwargs.get("width")
+        self.button_type = kwargs.get("button_type")
         self._click_callbacks = []
         self._watchers = []
         self.param = _FakeWatcher(self)
@@ -36,7 +38,6 @@ class _FakeWidget:
     def click(self):
         for callback in self._click_callbacks:
             callback(None)
-
 
 class _FakePane:
     def __init__(self, object=None, **kwargs):
@@ -180,10 +181,15 @@ def test_create_simulation_plot_session_shows_simulating_then_updates(monkeypatc
     )
 
     controls = session.layout.children[1]
-    button = controls.children[3]
-    status_pane = controls.children[2]
+    button = controls.children[2]
+    status_pane = controls.children[3]
     trajectory_pane = session.layout.children[0]
     diagnostics_pane = session.layout.children[2]
+
+    input_row = controls.children[1]
+    for widget in input_row.children:
+        assert widget.width == 180
+    assert button.width == 180
 
     assert status_pane.object.startswith("Simulating...")
     assert len(doc.periodic_callbacks) == 1
